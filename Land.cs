@@ -35,11 +35,11 @@ namespace TianParameterModelForOpt
         public double buildingLandSpacing;
 
         public double absulatTolerance;
-
+        // 判断地块是否处于基地边界上
         public bool isABoundageLand;
-
+        
         public List<Curve> zones;
-
+        // 判断地块的方向隶属
         public string isWestOrEast;
 
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
@@ -65,8 +65,6 @@ namespace TianParameterModelForOpt
             // 以下是计算属性
             this.isABoundageLand = IsABoundageLand(land, baseField, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage);
             this.isWestOrEast = IsWestOrEast(zones, land);
-
-
 
 
         }
@@ -128,6 +126,38 @@ namespace TianParameterModelForOpt
         }
 
 
+        // 获得封闭曲线land拆成四个方向的边界,并获得东西南北的长度
+        public Dictionary<string, double> GetLengthsAndLandlines(Curve landCurve, out Dictionary<string, List<Curve>> fourDirectionsEdges)
+        {
+            fourDirectionsEdges = DispatchEdgesThroughDirection(landCurve);
+
+            // 获得四个方向各自所有的curve的长度之和，分别存放于一个字典中，键为方向，值为长度
+            Dictionary<string, double> directionAndLengths = new Dictionary<string, double>();
+            foreach (var direction in fourDirectionsEdges.Keys)
+            {
+                double length = 0;
+                foreach (var edge in fourDirectionsEdges[direction])
+                {
+                    length += edge.GetLength();
+                }
+                directionAndLengths.Add(direction, length);
+            }
+            return directionAndLengths;
+        }
+
+
+
+
+        /// <summary>
+        /// 获得封闭曲线的长度与宽度. 宽度按照land的最短边的长度计算，长度按照最长边的长度计算.
+        /// </summary>
+        /// <param name="land">定义封闭曲线的PolylineCurve对象.</param>
+        /// <param name="length">封闭曲线的长度.</param>
+        /// <param name="width">封闭曲线的宽度.</param>
+        /// 
+
+
+
         /*----------------------------------------计算数值的方法-------------------------------------------*/
 
         public double GetBuildingDepth()
@@ -141,14 +171,10 @@ namespace TianParameterModelForOpt
 
             return buildingDepth;
         }
-
-
-
-
         /*-----------------------------------------------------------------------------------------------*/
 
         /*-- 生成sketch的两个核心方法，一个生成单个线对应的块，另一个将块布尔并集 --*/
-        public Curve drawSingleBlockSketch(List<Point3d> pts, double distance, Curve land)
+        public Curve drawSingleBlockSketch(List<Point3d> pts, Curve land)
         {
             // 若list不为空，则对于列表进行排序，并连成polyline
             if (pts.Count != 0)
@@ -229,14 +255,12 @@ namespace TianParameterModelForOpt
 
             /*Rectangle3d rect = new Rectangle3d;*/
             return usablePolyline.ToNurbsCurve();
-
-
-
         }
 
-        // 布尔并集
 
-        public Curve boolSingleBlockSketchsUnion(List<Curve> single_blocks)
+        // -----布尔并集
+
+        public Curve BoolSingleBlockSketchsUnion(List<Curve> single_blocks)
         {
             /// <summary>
             /// 将传入的所有组成一个建筑的轮廓进行布尔运算，返回一个建筑的轮廓
@@ -268,30 +292,59 @@ namespace TianParameterModelForOpt
             {
                 Curve curve = single_blocks[i];
                 Curve[] result = Curve.CreateBooleanUnion(new Curve[] { unionCurve, curve }, 0.001);
+
                 if (result.Length == 1)
+                {
                     unionCurve = result[0];
+                }
+                    
+                else if (result.Length > 1)
+                {
+                    // 如果并集操作后的结果不止一个Curve，则取出所有curve中闭合且面积最大的那一个，非闭合的和其他的被排除
+                    double maxArea = 0;
+                    int maxAreaIndex = 0;
+                    for (int j = 0; j < result.Length; j++)
+                    {
+                        if (result[j].IsClosed)
+                        {
+                            double area = AreaMassProperties.Compute(result[j]).Area;
+                            if (area > maxArea)
+                            {
+                                maxArea = area;
+                                maxAreaIndex = j;
+                            }
+                        }
+                    }
+                    unionCurve = result[maxAreaIndex];
+
+                }
                 else
                     throw new System.Exception("布尔并集操作失败");
             }
 
-            // 删除多余的点
-            Curve[] splitCurves = unionCurve.Split(0.001);
+            //// 删除多余的点
+            //Curve[] splitCurves = unionCurve.Split(0.001);
 
-            // 如果只有一个Curve，则直接返回
-            if (splitCurves.Length == 1)
-                return splitCurves[0];
+            //// 如果只有一个Curve，则直接返回
+            //if (splitCurves.Length == 1)
+            //    return splitCurves[0];
+            //else 
+            //{
+            //    // 否则将所有Curve连接成一个新的Curve
+            //    PolyCurve polyCurve = new PolyCurve();
 
-            // 否则将所有Curve连接成一个新的Curve
-            PolyCurve polyCurve = new PolyCurve();
-            foreach (Curve curve in splitCurves)
-            {
-                if (curve.IsPolyline())
-                    polyCurve.Append(curve.ToPolyline());
-                else
-                    polyCurve.Append(curve);
-            }
+            //    foreach (Curve curve in splitCurves)
+            //    {
+            //        if (curve.IsPolyline())
+            //            polyCurve.Append(curve.ToNurbsCurve());
+            //        else
+            //            polyCurve.Append(curve);
+            //    }
 
-            return polyCurve;
+            //    return polyCurve;
+            //}
+
+            return unionCurve;
         }
 
         /*-----------------------------------------------------------*/
@@ -323,33 +376,6 @@ namespace TianParameterModelForOpt
             }
         }
 
-
-
-        //public List<Curve> offsetSideCurve(Curve sideCurve, double spacing, double depth)
-        //{
-        //    // insideCurve, 用Mymethods中的 OffsetCurveAlongDirection来让边界向内偏移
-        //    // 说明
-        //    // 输入：sideCurve，一条边界曲线
-        //    // 输出：insideCurve，向内偏移后的曲线
-        //    // 功能：根据输入的边界曲线，向内偏移一定距离，返回偏移后的曲线
-        //    Curve insideCurve = MyMethods.OffsetTowardsRightDirection(sideCurve, spacing, land);
-        //    Curve outsideCurve = MyMethods.OffsetTowardsRightDirection(sideCurve, depth, land);
-
-        //    List<Curve> result = new List<Curve> { insideCurve, outsideCurve };
-
-        //    return result;
-
-        //}
-
-        //public List<Curve> offsetEndCurve(Curve endCurve, double spacing)
-        //{
-        //    Curve inEndCurve = MyMethods.OffsetTowardsRightDirection(endCurve, spacing, land);
-            
-
-        //    List<Curve> result = new List<Curve> { inEndCurve };
-
-        //    return result;
-        //}
 
         /*----------------------------方向处理方法，用于定义物体不同边的方向-----------------------------------*/
 
@@ -994,7 +1020,7 @@ namespace TianParameterModelForOpt
         /// <param name="notOnBoundageDic">不位于边界上的relationship。</param>
         /// <param name="onBoundageDic">位于边界上的relationship。</param>
         /// <returns>无return</returns>
-        public bool BoundageOrNot(Dictionary<string, List<Curve>> relationshipDict, Curve baseIsTheBoundage, out Dictionary<string, List<Curve>> onBoundageDic, out Dictionary<string, List<Curve>> notOnBoundageDic)
+        public bool BoundageOrNot(Dictionary<string, List<Curve>> relationshipDict, Curve baseIsTheBoundage, out Dictionary<string, List<Curve>> onBoundageDic, out Dictionary<string, List<Curve>> notOnBoundageDic, out List<string> boundageDirections)
         {
             onBoundageDic = new Dictionary<string, List<Curve>>(){
             { "north", new List<Curve>() },
@@ -1013,6 +1039,9 @@ namespace TianParameterModelForOpt
             }; // Edges that are not boundages
 
             bool isBoundageOrNot = false;
+
+            boundageDirections = new List<string>();
+
 
             foreach (string direction in relationshipDict.Keys)
             {
@@ -1037,6 +1066,10 @@ namespace TianParameterModelForOpt
                         //}
                         // 如果存在一条边与base的边界重合，则这个land被标记为“Boundage”
                         isBoundageOrNot = true;
+
+                        // 把哪条边在boundage记录下来
+                        if (!boundageDirections.Contains(direction))
+                            boundageDirections.Add(direction);
                     }
 
                     else

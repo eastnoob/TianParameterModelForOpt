@@ -157,7 +157,7 @@ namespace TianParameterModelForOpt
         /// bool yes_or_no, 如果交了就传回true
         /// </returns>
         public static bool GetIntersections(Dictionary<Curve, List<Curve>> curveWithItsOffset1, Dictionary<Curve, List<Curve>> curveWithItsOffset2, Curve landCurve, double tolerance,
-                                                                        out Dictionary<Curve, List<Point3d>> curveWithIntersection1, out Dictionary<Curve, List<Point3d>> curveWithIntersection2 )
+                                                         out Dictionary<Curve, List<Point3d>> curveWithIntersection1, out Dictionary<Curve, List<Point3d>> curveWithIntersection2 )
         {
             // 装intersection
             List<Curve> intersections = new List<Curve>();
