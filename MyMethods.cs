@@ -1,9 +1,11 @@
 ﻿using Eto.Forms;
+using Rhino;
 using Rhino.Geometry;
 using Rhino.Geometry.Intersect;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -11,7 +13,11 @@ namespace TianParameterModelForOpt
 {
     public static class MyMethods
     {
-        
+
+
+        // 构造器
+        private static readonly double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
+
         public static List<Point3d> GrahamScan(List<Point3d> points)
         {
             /// <summary>
@@ -231,5 +237,171 @@ namespace TianParameterModelForOpt
                 Rhino.RhinoApp.WriteLine("直线无交点。");
             }
         }
+
+        // 让曲线朝着land内部垂直偏移
+
+        public static Curve OffsetCurveAlongDirection(Curve curve, Curve land, double distance)
+
+        {
+            // 计算封闭曲线的质心
+            Point3d centroid = land.GetBoundingBox(false).Center;
+
+            // 计算曲线的方向向量
+            Vector3d direction = centroid - curve.PointAtStart;
+
+/*            // 设置曲线的偏移方向
+            Vector3d curveOffsetDirection = direction;*/
+
+            // 偏移曲线
+            Curve offsetCurve = curve.Offset(centroid, Plane.WorldXY.Normal, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];
+
+            return offsetCurve;
+        }
+
+
+        /// <summary>
+        ///  将curve按照正确的方向，偏移一个distance的距离
+        /// </summary>
+        /// <param name="curve 输入曲线"></param>
+        /// <param name="distance 偏移距离"></param>
+        /// <param name="land 所在的地块"></param>
+        /// <returns></returns>
+        public static Curve OffsetTowardsRightDirection(Curve curve, double distance, Curve land)
+        {
+            // 获取offsetPoint，使用getOffsetPoint方法
+            Point3d offsetPoint = GetDirections(curve, land);
+
+            //进行偏移，方向点为offsetPoint，距离为distance，基准平面为世界坐标系XY平面
+            Curve offsetCurve = curve.Offset(offsetPoint, Plane.WorldXY.Normal, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];
+
+            return offsetCurve;
+        }
+
+
+
+        //public static Curve OffsetTowardsCentroids(this Curve curve, double distance, Curve land)
+        //{
+        //    /*            // 质心
+        //                var centroid = land.GetBoundingBox(true).Center;
+
+        //                // 获取land曲线在其质心处的法线向量
+        //                double t;
+        //                land.ClosestPoint(centroid, out t);
+
+        //                Vector3d tangent = curve.TangentAt(t);
+
+        //                Vector3d landNormal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
+
+        //                // 获取曲线在其中心点处的切线向量
+        //                var curveTangent = curve.TangentAt(curve.Domain.Mid);
+
+        //                // 计算偏移方向向量，即切线向量和法线向量的叉积向量
+        //                var direction = Vector3d.CrossProduct(landNormal, curveTangent);
+
+        //                // 计算偏移向量，即偏移方向向量的长度乘以偏移距离
+        //                var offsetVector = direction * distance;
+
+        //                // 使用Curve.Offset方法创建偏移曲线，并返回偏移后的曲线
+        //                return curve.Offset(offsetVector, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance, CurveOffsetCornerStyle.Sharp)[0];
+
+        //    */
+
+        //    /// <summary>
+        //    /// 沿着land曲线的质心朝向的方向向内偏移指定距离
+        //    /// </summary>
+        //    /// <param name="curve">land的一条边</param>
+        //    /// <param name="distance">偏移距离</param>
+        //    /// <param name="land">land曲线</param>
+        //    /// <returns>向land曲线质心方向偏移后的曲线</returns>
+
+        //    /*            // 获取land曲线的质心
+        //                var centroid = land.GetBoundingBox(true).Center;
+
+        //                // 获取land曲线在质心处的法线向量
+        //                double t;
+        //                land.ClosestPoint(centroid, out t);
+        //                Vector3d tangent = curve.TangentAt(t);
+        //                Vector3d landNormal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
+
+        //                // 获取曲线在其中心点处的切线向量
+        //                var curveTangent = curve.TangentAt(curve.Domain.Mid);
+
+        //                // 计算偏移方向向量，即切线向量和法线向量的叉积向量
+        //                var direction = Vector3d.CrossProduct(landNormal, curveTangent);
+
+        //                // 计算偏移向量，即偏移方向向量的长度乘以偏移距离
+        //                var offsetVector = direction * distance;
+
+        //                // 使用Curve.Offset方法创建偏移曲线，并返回偏移后的曲线
+        //                return curve.Offset(Plane.WorldXY, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];*/
+
+
+
+
+
+        //}
+
+        public static Point3d GetDirections(Curve curve, Curve land)
+        {
+
+            // 旋转复制curve，创建在需要平面上垂直于曲线curve的verticalLine
+            Curve verticalLine = curve.DuplicateCurve();
+            verticalLine.Rotate(90, Vector3d.ZAxis, curve.PointAtStart);
+
+
+            // 获取线的两个端点
+            Point3d[] endPoints = { verticalLine.PointAtStart, verticalLine.PointAtEnd };
+
+            // 检查端点是否在地块内
+            int count = 0;
+            foreach (Point3d endPoint in endPoints)
+            {
+                if (land.Contains(endPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
+                {
+                    count++;
+                }
+            }
+
+            // 根据端点的数量返回方向
+            Point3d offsetPoint = endPoints[0];
+
+            if (endPoints.Length == 2)
+            {
+                // 创建判断点
+                Curve offsetCurve = curve.Offset(endPoints[0],Rhino.Geometry.Plane.WorldXY.Normal, 0.01, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];
+                double[] paras = offsetCurve.DivideByCount(7, true);
+                Point3d[] judgePoints = new Point3d[paras.Length];
+
+                for (int i = 0; i < paras.Length; i++)
+                {
+                    judgePoints[i] = offsetCurve.PointAtNormalizedLength(paras[i]);
+                }
+
+                // 若judgepoints有三个点在land外，则返回endpoints[1]，否则返回endpoints[0]
+                int countInside = 0;
+                foreach (Point3d judgePoint in judgePoints)
+                {
+                    if (land.Contains(judgePoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside))
+                    {
+                        countInside++;
+                    }
+                }
+                if (countInside >= 3)
+                {
+                    offsetPoint = endPoints[0];
+                }
+                else
+                {
+                    offsetPoint = endPoints[1];
+                }
+            }
+            else
+            {
+                offsetPoint = endPoints[0];
+            }
+
+            return offsetPoint;
+        }
+
     }
 }
