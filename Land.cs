@@ -24,7 +24,7 @@ namespace TianParameterModelForOpt
         // 成员变量，包含以下属性：baseCurves, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing
         public List<Curve> baseCurves;
         public List<Curve> lands;
-        public Curve land;
+        public Curve landCurve;
         public Curve baseField;
         public double roomDepth;
         public double roomWidth;
@@ -35,6 +35,7 @@ namespace TianParameterModelForOpt
         public double buildingLandSpacing;
 
         public double absulatTolerance;
+
         // 判断地块是否处于基地边界上
         public bool isABoundageLand;
         
@@ -42,12 +43,36 @@ namespace TianParameterModelForOpt
         // 判断地块的方向隶属
         public string isWestOrEast;
 
+        // 初始化时候分好方向
+        public Dictionary<string, List<Curve>> dispatchedEdges;
+
+        // 初始化时候确定好地块的边缘问题
+        public Dictionary<string, List<Curve>> onBoundage;
+        public Dictionary<string, List<Curve>> notOnBoundage;
+        public List<string> boundageDirections;
+        public bool boundageOrNot;
+
+        // 这个land中属于boundage的方向
+        public List<string> boundageDirectionsInLand;
+
+        // 炸开后的land边缘集合，以及land中每个边缘的长度
+        public Dictionary<string, List<Curve>> fourDirectionsEdges;
+        public Dictionary<string, double> directionAndLength;
+
+        // 东西南北
+        public string westOrEast;
+        public string northOrSouth;
+
+        // 特殊变量，看情况决定是否启用
+        public double floorHeight;
+        public double floorNum;
+
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
         public Land(List<Curve> baseCurves, List<Curve> lands, double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing)
         {
             this.baseCurves = baseCurves;
             this.lands = lands;
-            this.land = land;
+            this.landCurve = landCurve;
             this.baseField = baseField;
             this.roomDepth = roomDepth;
             this.roomWidth = roomWidth;
@@ -63,10 +88,15 @@ namespace TianParameterModelForOpt
             this.zones = zones;
 
             // 以下是计算属性
-            this.isABoundageLand = IsABoundageLand(land, baseField, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage);
-            this.isWestOrEast = IsWestOrEast(zones, land);
+            this.isABoundageLand = IsABoundageLand(landCurve, baseField, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage, out boundageDirectionsInLand);
+            this.isWestOrEast = IsWestOrEast(zones, landCurve);
 
+            this.dispatchedEdges = DispatchEdgesThroughDirection(landCurve);
 
+            this.directionAndLength = GetLengthsAndLandlines(landCurve, out fourDirectionsEdges);
+
+            this.westOrEast = IsWestOrEast(zones, landCurve);
+            this.northOrSouth = IsNorthOrSouth(zones, landCurve);
         }
 
 
@@ -76,12 +106,16 @@ namespace TianParameterModelForOpt
         /// <summary>
         /// 按照东南西北进行分类，将land的边界分为四个方向以及是否在边界上，并返回其是否处在基地的边界上
         /// </summary>
-        /// <param name="landCurve"></param>
-        /// <param name="baseCurve"></param>
-        /// <param name="onBoundage"></param>
-        /// <param name="notOnBoundage"></param>
-        /// <returns></returns>
-        private bool IsABoundageLand(Curve landCurve, Curve baseCurve, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage)
+        /// <param name="landCurve"> 这个land的图形</param>
+        /// <param name="baseCurve">基地的图形</param>
+        /// <param name="onBoundage">输出，land的boundage边</param>
+        /// <param name="notOnBoundage">输出，land的非boundage边</param>
+        /// <param name="boundageDirections">输出，land中属于boundage的边的方向</param>
+        /// <returns>布尔值，这个啦奶是否属于boundage类型</returns>
+        private bool IsABoundageLand(Curve landCurve, Curve baseCurve, 
+            out Dictionary<string, List<Curve>> onBoundage, 
+            out Dictionary<string, List<Curve>> notOnBoundage,
+            out List<string> boundageDirections)
         {
             var relationshipDic = DispatchEdgesThroughDirection(landCurve);
 
@@ -89,7 +123,7 @@ namespace TianParameterModelForOpt
             //Dictionary<string, List<Curve>> onBoundage = new Dictionary<string, List<Curve>>();
             //Dictionary<string, List<Curve>> notOnBoundage = new Dictionary<string, List<Curve>>();
 
-            bool isABoundageLand = BoundageOrNot(relationshipDic, baseCurve, out onBoundage, out notOnBoundage);
+            bool isABoundageLand = BoundageOrNot(relationshipDic, baseCurve, out onBoundage, out notOnBoundage, out boundageDirections);
 
             return isABoundageLand;
 
@@ -124,6 +158,31 @@ namespace TianParameterModelForOpt
             else
                 return "east";
         }
+
+        public string IsNorthOrSouth(List<Curve> zones, Curve land)
+        {
+            int zoneIndex = -1;
+
+            // Get centroid of curve-to-check
+            Point3d centroid = AreaMassProperties.Compute(land).Centroid;
+
+            for (int i = 0; i < zones.Count; i++)
+            {
+                if (zones[i].Contains(centroid, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
+                {
+                    zoneIndex = i;
+                    break;
+                }
+            }
+
+            if (zoneIndex == -1)
+                return "north";
+            else if (zoneIndex == 0)
+                return "south";
+            else
+                return "north";
+        }
+
 
 
         // 获得封闭曲线land拆成四个方向的边界,并获得东西南北的长度
@@ -171,210 +230,68 @@ namespace TianParameterModelForOpt
 
             return buildingDepth;
         }
-        /*-----------------------------------------------------------------------------------------------*/
 
-        /*-- 生成sketch的两个核心方法，一个生成单个线对应的块，另一个将块布尔并集 --*/
-        public Curve drawSingleBlockSketch(List<Point3d> pts, Curve land)
+        public double GetShortestEndDepth()
         {
-            // 若list不为空，则对于列表进行排序，并连成polyline
-            if (pts.Count != 0)
-            {
-                Point3d[] ptsSort = Point3d.SortAndCullPointList(pts, absulatTolerance);
-                Polyline polyline = new Polyline(ptsSort);
-                if (polyline.IsClosed == false)
-                {
-                    polyline.Add(polyline[0]);
-                }
-                return polyline.ToNurbsCurve();
-            }
+            double shortestEndDepth = 1.0;
+            if (this.isABoundageLand == true)
+                shortestEndDepth = buildingSpacing + roomDepth + corridorWidth;
+
             else
-            {
-                // 丢出异常
-/*                throw new Exception("空列表");
-*/
-                return null;
-            }
-
-        }
-
-
-        public Curve drawSingleBlockSketch(Point3d pt1, Point3d pt2, double distance, Curve land)
-        {
-            /// <summary>
-            /// 建筑轮廓的最小单元的核心生成逻辑
-            /// 
-
-            // 传入两个点，以及一个距离值连接两点，让两个点沿着连接点的两方向垂线方向各自复制一个距离，形成两组复制点。如果其中一组的某个复制的点在不在land之内，则删除这一组，最后只传回一组点
+                shortestEndDepth = 2*buildingSpacing + roomDepth + corridorWidth;
             
-            // 1. 生成两个点的连接线
-            Line baseLine = new Line(pt1, pt2);
-            // 2. 生成两个点的连接线的单位向量
-            Vector3d baseLineVec = baseLine.Direction;
-            // 3. 生成两个点的连接线的单位向量的垂直向量
-            Vector3d baseLineVecPerp = Vector3d.CrossProduct(baseLineVec, Vector3d.ZAxis);
-            // 4. 生成两个点的连接线的单位向量的垂直向量的单位向量
-            Vector3d baseLineVecPerpUnit = Vector3d.Divide(baseLineVecPerp, baseLineVecPerp.Length);
-            // 5. 生成两个点的连接线的单位向量的垂直向量的单位向量的距离
-            Vector3d baseLineVecPerpUnitDistance = Vector3d.Multiply(baseLineVecPerpUnit, distance);
-            // 6. 生成两个点的连接线的单位向量的垂直向量的单位向量的距离的两个方向的点
-            Point3d pt1Perp1 = Point3d.Add(pt1, baseLineVecPerpUnitDistance);
-            Point3d pt1Perp2 = Point3d.Subtract(pt1, baseLineVecPerpUnitDistance);
-
-            Point3d pt2Perp1 = Point3d.Add(pt2, baseLineVecPerpUnitDistance);
-            Point3d pt2Perp2 = Point3d.Subtract(pt2, baseLineVecPerpUnitDistance);
-            // 7. 判断两组复制点是否在land之内
-            Point3d[] pts1 = { pt1Perp1, pt1Perp2 };
-            Point3d[] pts2 = { pt2Perp1, pt2Perp2 };
-
-            Point3d[] usable = new Point3d[2];
-
-            if (land.Contains(pts1[0], Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside 
-                && land.Contains(pts1[1], Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
-
-            {
-                usable = pts1;
-            }
-            else if (land.Contains(pts2[0], Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside 
-                && land.Contains(pts2[1], Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
-            {
-                usable = pts2;
-            }
-            else
-            {
-                usable = pts1;
-            }
-
-            // 8. 生成单位矩形
-            Point3d[] usableSort = Point3d.SortAndCullPointList(usable, absulatTolerance);
-            Polyline usablePolyline = new Polyline(usableSort);
-
-            if(usablePolyline.IsClosed == false)
-            {
-                usablePolyline.Add(usablePolyline[0]);
-            }
-
-            /*Rectangle3d rect = new Rectangle3d;*/
-            return usablePolyline.ToNurbsCurve();
+            return shortestEndDepth;
         }
 
-
-        // -----布尔并集
-
-        public Curve BoolSingleBlockSketchsUnion(List<Curve> single_blocks)
+        public double GetShortestBLength()
         {
-            /// <summary>
-            /// 将传入的所有组成一个建筑的轮廓进行布尔运算，返回一个建筑的轮廓
-            ///
-            // 排除未闭合的曲线
-            for (int i = 0; i < single_blocks.Count; i++)
-            {
-                Curve curve = single_blocks[i];
-                if (!curve.IsClosed)
-                {
-                    Point3d startPoint = curve.PointAtStart;
-                    Point3d endPoint = curve.PointAtEnd;
-                    double t;
-                    curve.ClosestPoint(startPoint, out t);
-                    Curve newCurve = Curve.CreateControlPointCurve(new Point3d[] { startPoint, endPoint });
-                    single_blocks[i] = newCurve;
-                }
-            }
-            // 如果列表里只含有一个元素，则直接返回这个元素并结束函数
-            if (single_blocks.Count == 1)
-                return single_blocks[0];
-
-
-            // 对列表中的第一个Curve进行初始化
-            Curve unionCurve = single_blocks[0];
-
-            // 对列表中的所有Curve进行布尔并集操作
-            for (int i = 1; i < single_blocks.Count; i++)
-            {
-                Curve curve = single_blocks[i];
-                Curve[] result = Curve.CreateBooleanUnion(new Curve[] { unionCurve, curve }, 0.001);
-
-                if (result.Length == 1)
-                {
-                    unionCurve = result[0];
-                }
-                    
-                else if (result.Length > 1)
-                {
-                    // 如果并集操作后的结果不止一个Curve，则取出所有curve中闭合且面积最大的那一个，非闭合的和其他的被排除
-                    double maxArea = 0;
-                    int maxAreaIndex = 0;
-                    for (int j = 0; j < result.Length; j++)
-                    {
-                        if (result[j].IsClosed)
-                        {
-                            double area = AreaMassProperties.Compute(result[j]).Area;
-                            if (area > maxArea)
-                            {
-                                maxArea = area;
-                                maxAreaIndex = j;
-                            }
-                        }
-                    }
-                    unionCurve = result[maxAreaIndex];
-
-                }
-                else
-                    throw new System.Exception("布尔并集操作失败");
-            }
-
-            //// 删除多余的点
-            //Curve[] splitCurves = unionCurve.Split(0.001);
-
-            //// 如果只有一个Curve，则直接返回
-            //if (splitCurves.Length == 1)
-            //    return splitCurves[0];
-            //else 
-            //{
-            //    // 否则将所有Curve连接成一个新的Curve
-            //    PolyCurve polyCurve = new PolyCurve();
-
-            //    foreach (Curve curve in splitCurves)
-            //    {
-            //        if (curve.IsPolyline())
-            //            polyCurve.Append(curve.ToNurbsCurve());
-            //        else
-            //            polyCurve.Append(curve);
-            //    }
-
-            //    return polyCurve;
-            //}
-
-            return unionCurve;
+            if(this.isABoundageLand == true)
+                return 5 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing;
+            else
+                return (5 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + (2*buildingSpacing);
         }
+
+        public double GetShortestLLength()
+        {
+            if (this.isABoundageLand == true)
+                return 10 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing;
+            else
+                return 10 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + 2 * buildingSpacing;
+        }
+
+        public double GetShortestULength()
+        {
+            double buildingHeight = this.floorHeight * this.floorNum;
+            double buildingInterval = buildingHeight * 1.2;
+
+            if (buildingInterval <= 13)
+                buildingInterval = 13;
+
+            if(this.isABoundageLand == true)
+                return buildingInterval + 2*roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
+            else
+                return buildingInterval + 2 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2*buildingSpacing;
+        }
+
+        public double GetShortestOLength()
+        {
+            double buildingHeight = this.floorHeight * this.floorNum;
+            double buildingInterval = buildingHeight * 1.2;
+
+            if (buildingInterval <= 13)
+                buildingInterval = 13;
+
+            if (this.isABoundageLand == true)
+                return buildingInterval + 4* roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
+            else
+                return buildingInterval + 4* roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2 * buildingSpacing;
+        }
+
+
+
 
         /*-----------------------------------------------------------*/
 
-        /*------------------------------------------ offset行为相关的函数 -----------------------------------------------------*/
-        // TOD 没做完
-        public Curve generateSketchFromCurveAccordingToCondition(Curve curve, string condition)
-        {
-            /// <summary>
-            /// 行为分为side和edge两种
-            /// side表示曲线是建筑的末端，则只需要偏移一次就行，同时其不需要生成体块
-            /// edge表示曲线是建筑的体，需要偏移两次，第一次是楼间距的一半，第二次则是楼的宽度，且需要生成体块
-
-            if condition == "side"
-            {
-                return offsetCurveInside(curve);
-            }
-            else if condition == "outside"
-            {
-                return offsetCurveOutside(curve);
-            }
-            else if condition == "both"
-            {
-                return offsetCurveBoth(curve);
-            }
-            else
-            {
-                throw new System.Exception("offset行为分类错误");
-            }
-        }
 
 
         /*----------------------------方向处理方法，用于定义物体不同边的方向-----------------------------------*/
@@ -942,7 +859,7 @@ namespace TianParameterModelForOpt
                             // 新方法，直接用offsetPoint判断
 
                             // 不在land内则证明其方向是错误的，正确方向是其现在方向的反方向
-                            if (land.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                            if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
                             {
                                 if (!debuggedRelationshipDict[negativeDirection].Contains(edge))
                                 {
@@ -976,7 +893,7 @@ namespace TianParameterModelForOpt
                         Point3d offsetPoint = JudgePointOfDispatch(unhandledCurve, negativeDirection, directionDic);
 
                         // 不在land内则证明东方向是错误的，正确方向是其现在方向的反方向-西
-                        if (land.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                        if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
                         {
                             if (!debuggedRelationshipDict[negativeDirection].Contains(unhandledCurve))
                             {
@@ -1020,7 +937,12 @@ namespace TianParameterModelForOpt
         /// <param name="notOnBoundageDic">不位于边界上的relationship。</param>
         /// <param name="onBoundageDic">位于边界上的relationship。</param>
         /// <returns>无return</returns>
-        public bool BoundageOrNot(Dictionary<string, List<Curve>> relationshipDict, Curve baseIsTheBoundage, out Dictionary<string, List<Curve>> onBoundageDic, out Dictionary<string, List<Curve>> notOnBoundageDic, out List<string> boundageDirections)
+        public bool BoundageOrNot
+            (Dictionary<string, List<Curve>> relationshipDict, 
+            Curve baseIsTheBoundage, 
+            out Dictionary<string, List<Curve>> onBoundageDic, 
+            out Dictionary<string, List<Curve>> notOnBoundageDic, 
+            out List<string> boundageDirections)
         {
             onBoundageDic = new Dictionary<string, List<Curve>>(){
             { "north", new List<Curve>() },
@@ -1089,88 +1011,88 @@ namespace TianParameterModelForOpt
 
         /*----------------------------------------进行偏移，形成图形------------------------------------------*/
 
-        public List<Curve> EdgeProcessor(Curve edge, string direction, string condition = "edge", List<Curve> boundings = null)
-        {
+        //public List<Curve> EdgeProcessor(Curve edge, string direction, string condition = "edge", List<Curve> boundings = null)
+        //{
                 
-            // 储存偏移后的边缘
-            List<Curve> spliters = new List<Curve>();
+        //    // 储存偏移后的边缘
+        //    List<Curve> spliters = new List<Curve>();
 
-            /*  ------------------------------------------------ EDGE --------------------------------------------------------*/
+        //    /*  ------------------------------------------------ EDGE --------------------------------------------------------*/
 
-            if (condition == "edge") // edge，普通非boundage边缘，偏移两次，形成体块的主体
-            {
-                double buildingDepth = GetBuildingDepth();
-                //// 第一次，偏移spacing的一半
-                //Curve outsideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingLandSpacing, land);
+        //    if (condition == "edge") // edge，普通非boundage边缘，偏移两次，形成体块的主体
+        //    {
+        //        double buildingDepth = GetBuildingDepth();
+        //        //// 第一次，偏移spacing的一半
+        //        //Curve outsideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingLandSpacing, land);
 
-                //// 第二次，偏移房屋深度
-                //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
+        //        //// 第二次，偏移房屋深度
+        //        //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
 
-                //spliters.Add(outsideSpliters);
-                //spliters.Add(insideSpliters);
+        //        //spliters.Add(outsideSpliters);
+        //        //spliters.Add(insideSpliters);
 
-                spliters.AddRange(Offset.offsetSideCurve(edge, buildingLandSpacing, buildingDepth, land));
+        //        spliters.AddRange(Offset.offsetSideCurve(edge, buildingLandSpacing, buildingDepth, land));
 
-            }
-            /*--------------------------------------------- Boundage ------------------------------------------------------*/
+        //    }
+        //    /*--------------------------------------------- Boundage ------------------------------------------------------*/
 
-            else if (condition == "boundage") // boundage，boundage边缘，偏移一次，第一次与边缘重合，第二次便宜建筑深度，形成体块的主体
-            {
-                double buildingDepth = GetBuildingDepth();
-                //// 第一次，不偏移
-                //Curve outsideSpliters = edge;
+        //    else if (condition == "boundage") // boundage，boundage边缘，偏移一次，第一次与边缘重合，第二次便宜建筑深度，形成体块的主体
+        //    {
+        //        double buildingDepth = GetBuildingDepth();
+        //        //// 第一次，不偏移
+        //        //Curve outsideSpliters = edge;
 
-                //// 第二次，偏移房屋深度
-                //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
+        //        //// 第二次，偏移房屋深度
+        //        //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
 
-                //！ 可能有BUG（offset为0）
-                spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
+        //        //！ 可能有BUG（offset为0）
+        //        spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
                 
-            }
+        //    }
 
-            /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
+        //    /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
 
-            else if (condition == "end_boundage" ) // boundage，boundage边缘，不偏移，与边缘重合
-            {
-                // 不偏移
-                spliters.Add(edge);
-            }
+        //    else if (condition == "end_boundage" ) // boundage，boundage边缘，不偏移，与边缘重合
+        //    {
+        //        // 不偏移
+        //        spliters.Add(edge);
+        //    }
 
-        /*----------------------------------------------END BOUNDING-------------------------------------------------*/
+        //*----------------------------------------------END BOUNDING-------------------------------------------------*/
 
-            // ? 想不起来了，暂时搁置
+        //    // ? 想不起来了，暂时搁置
 
-            //else if (condition == "end_bounding")
-            //{
-            //    // 处理边缘在边界末端且边界将被用作末端
-            //    if (land != null)
-            //    {
-            //        List<Curve> boundingLinesDirections = CreateBoundingLinesDirections(land);
-            //        Curve outsideSpliters = boundingLinesDirections[direction] as Curve;
-            //        Curve[] insideSpliters = outsideSpliters.Offset(directionPt[0], spacing, RhinoMath.ZeroTolerance, CurveOffsetCornerStyle.Sharp);
+        //    //else if (condition == "end_bounding")
+        //    //{
+        //    //    // 处理边缘在边界末端且边界将被用作末端
+        //    //    if (land != null)
+        //    //    {
+        //    //        List<Curve> boundingLinesDirections = CreateBoundingLinesDirections(land);
+        //    //        Curve outsideSpliters = boundingLinesDirections[direction] as Curve;
+        //    //        Curve[] insideSpliters = outsideSpliters.Offset(directionPt[0], spacing, RhinoMath.ZeroTolerance, CurveOffsetCornerStyle.Sharp);
 
-            //        spliters.Add(insideSpliters[0]);
-            //    }
-            //}
+        //    //        spliters.Add(insideSpliters[0]);
+        //    //    }
+        //    //}
 
-            /*----------------------------------------------END SPACING-------------------------------------------------*/
+        //    /*----------------------------------------------END SPACING-------------------------------------------------*/
 
-            else if (condition == "end_spacing") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
-            {
-                spliters.AddRange(Offset.offsetEndCurve(edge, buildingLandSpacing));
-            }
+        //    else if (condition == "end_spacing") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
+        //    {
+        //        spliters.AddRange(Offset.offsetEndCurve(edge, buildingLandSpacing));
+        //    }
 
-            /*----------------------------------------------END SELF SPACING-------------------------------------------------*/
+        //    /*----------------------------------------------END SELF SPACING-------------------------------------------------*/
 
-            else if (condition == "end_selfspacing")// end_self_spacing，偏移2次但是只偏移一个spacing的距离，功能忘记，先定义出来
-            {
-                double buildingDepth = GetBuildingDepth();
+        //    else if (condition == "end_selfspacing")// end_self_spacing，偏移2次但是只偏移一个spacing的距离，功能忘记，先定义出来
+        //    {
+        //        double buildingDepth = GetBuildingDepth();
 
-                spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
-            }
+        //        spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
+        //    }
 
-            return spliters;
-        }
+        //    return spliters;
+        //}
 
     /*-------------------------------------------------附属方法-------------------------------------------------*/
 
@@ -1253,7 +1175,7 @@ namespace TianParameterModelForOpt
 
             if (endPts.Length == 2)
             {
-                Curve offsetCurve = curve.Offset(Plane.WorldXY, 0.01, 0.001, CurveOffsetCornerStyle.Sharp)[0];
+                Curve offsetCurve = curve.Offset(Rhino.Geometry.Plane.WorldXY, 0.01, 0.001, CurveOffsetCornerStyle.Sharp)[0];
 
                 offsetCurve.DivideByCount(6, true, out Point3d[] judgePts);
 
@@ -1261,7 +1183,7 @@ namespace TianParameterModelForOpt
 
                 foreach (Point3d pt in judgePts)
                 {
-                    if (curve.Contains(pt, Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
+                    if (curve.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
                     {
                         count++;
                     }

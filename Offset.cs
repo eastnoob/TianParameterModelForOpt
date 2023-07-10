@@ -15,9 +15,18 @@ namespace TianParameterModelForOpt
         private static readonly double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
 
         /*-----------------------------------------偏移的核心方法--------------------------------------------------*/
-        public static List<Curve> offsetSideCurve(Curve sideCurve, double spacing, double depth, Curve land)
+
+        /// <summary>
+        /// insideCurve, 用Mymethods中的 OffsetCurveAlongDirection来让边界向内偏移
+        /// </summary>
+        /// <param name="sideCurve"></param>
+        /// <param name="spacing"></param>
+        /// <param name="depth"></param>
+        /// <param name="land"></param>
+        /// <returns></returns>
+        public static List<Curve> offsetSideCurve(Curve sideCurve, Curve land, double spacing, double depth)
         {
-            // insideCurve, 用Mymethods中的 OffsetCurveAlongDirection来让边界向内偏移
+            // 
             // 说明
             // 输入：sideCurve，一条边界曲线
             // 输出：insideCurve，向内偏移后的曲线
@@ -31,7 +40,7 @@ namespace TianParameterModelForOpt
 
         }
 
-        public static List<Curve> offsetEndCurve(Curve endCurve, double spacing, Curve land)
+        public static List<Curve> offsetEndCurve(Curve endCurve, Curve land, double spacing)
         {
             Curve inEndCurve = MyMethods.OffsetTowardsRightDirection(endCurve, spacing, land);
 
@@ -108,7 +117,7 @@ namespace TianParameterModelForOpt
                 int countInside = 0;
                 foreach (Point3d judgePoint in judgePoints)
                 {
-                    if (land.Contains(judgePoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside))
+                    if (land.Contains(judgePoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
                     {
                         countInside++;
                     }

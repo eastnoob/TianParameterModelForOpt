@@ -277,70 +277,6 @@ namespace TianParameterModelForOpt
             return offsetCurve;
         }
 
-
-
-        //public static Curve OffsetTowardsCentroids(this Curve curve, double distance, Curve land)
-        //{
-        //    /*            // 质心
-        //                var centroid = land.GetBoundingBox(true).Center;
-
-        //                // 获取land曲线在其质心处的法线向量
-        //                double t;
-        //                land.ClosestPoint(centroid, out t);
-
-        //                Vector3d tangent = curve.TangentAt(t);
-
-        //                Vector3d landNormal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
-
-        //                // 获取曲线在其中心点处的切线向量
-        //                var curveTangent = curve.TangentAt(curve.Domain.Mid);
-
-        //                // 计算偏移方向向量，即切线向量和法线向量的叉积向量
-        //                var direction = Vector3d.CrossProduct(landNormal, curveTangent);
-
-        //                // 计算偏移向量，即偏移方向向量的长度乘以偏移距离
-        //                var offsetVector = direction * distance;
-
-        //                // 使用Curve.Offset方法创建偏移曲线，并返回偏移后的曲线
-        //                return curve.Offset(offsetVector, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance, CurveOffsetCornerStyle.Sharp)[0];
-
-        //    */
-
-        //    /// <summary>
-        //    /// 沿着land曲线的质心朝向的方向向内偏移指定距离
-        //    /// </summary>
-        //    /// <param name="curve">land的一条边</param>
-        //    /// <param name="distance">偏移距离</param>
-        //    /// <param name="land">land曲线</param>
-        //    /// <returns>向land曲线质心方向偏移后的曲线</returns>
-
-        //    /*            // 获取land曲线的质心
-        //                var centroid = land.GetBoundingBox(true).Center;
-
-        //                // 获取land曲线在质心处的法线向量
-        //                double t;
-        //                land.ClosestPoint(centroid, out t);
-        //                Vector3d tangent = curve.TangentAt(t);
-        //                Vector3d landNormal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
-
-        //                // 获取曲线在其中心点处的切线向量
-        //                var curveTangent = curve.TangentAt(curve.Domain.Mid);
-
-        //                // 计算偏移方向向量，即切线向量和法线向量的叉积向量
-        //                var direction = Vector3d.CrossProduct(landNormal, curveTangent);
-
-        //                // 计算偏移向量，即偏移方向向量的长度乘以偏移距离
-        //                var offsetVector = direction * distance;
-
-        //                // 使用Curve.Offset方法创建偏移曲线，并返回偏移后的曲线
-        //                return curve.Offset(Plane.WorldXY, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];*/
-
-
-
-
-
-        //}
-
         public static Point3d GetDirections(Curve curve, Curve land)
         {
 
@@ -381,7 +317,7 @@ namespace TianParameterModelForOpt
                 int countInside = 0;
                 foreach (Point3d judgePoint in judgePoints)
                 {
-                    if (land.Contains(judgePoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside))
+                    if (land.Contains(judgePoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
                     {
                         countInside++;
                     }

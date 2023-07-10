@@ -12,10 +12,15 @@ namespace TianParameterModelForOpt
     public static class Intersect
     {
 
-        ///<summary>
-        /// 仅当originCrv中的两条曲线相交时候（有交点），才将offsetedCrv中的曲线进行相交操作，并传回交点们，布尔表示相交了还是没有
+        /// <summary>
+        /// 输入两条线，确定它们要不要做intersect这个动作
         /// </summary>
-        //  public static Point3d judgeIfNeedIntersection(List<Curve> originCrv, List<Curve> offsetedCrv, Curve baseCurve, double absulatTolerance, out bool yes_or_no)
+        /// <param name="curve1"></param>
+        /// <param name="curve2"></param>
+        /// <param name="baseCurve"></param>
+        /// <param name="tolerance"></param>
+        /// <param name="yes_or_no"></param>
+        /// <returns></returns>
         public static Point3d judgeIfNeedIntersection(Curve curve1, Curve curve2, Curve baseCurve, double tolerance, out bool yes_or_no)
         {
 
@@ -57,12 +62,12 @@ namespace TianParameterModelForOpt
                 //CurveIntersections events = Intersection.CurveCurve(offsetedCrv[0], offsetedCrv[1], absulatTolerance, absulatTolerance);
 
                 // 获取 line1 的起点和终点
-                Point3d start1 = offsetedCrv[0].PointAtStart;
-                Point3d end1 = offsetedCrv[0].PointAtEnd;
+                Point3d start1 = curve1.PointAtStart;
+                Point3d end1 = curve1.PointAtEnd;
 
                 // 获取 line2 的起点和终点
-                Point3d start2 = offsetedCrv[1].PointAtStart;
-                Point3d end2 = offsetedCrv[1].PointAtEnd;
+                Point3d start2 = curve2.PointAtStart;
+                Point3d end2 = curve2.PointAtEnd;
 
                 // 创建 Line 对象
                 Line lineObj1 = new Line(start1, end1);
@@ -70,7 +75,7 @@ namespace TianParameterModelForOpt
 
                 Point3d intersection;
                 // 先判断作为curve的两条curve是否相交
-                var curveCurveIntersection = Intersection.CurveCurve(offsetedCrv[0], offsetedCrv[1], tolerance, tolerance);
+                var curveCurveIntersection = Intersection.CurveCurve(curve1, curve2, tolerance, tolerance);
 
                 // line Line intersect用
                 double para1;
@@ -146,7 +151,7 @@ namespace TianParameterModelForOpt
         }
 
         /// <summary>
-        /// Intersection的核心，用于生成对应于每条原始边的偏移结果的交点，用于生成分散的矩形地面
+        /// ***** Intersection的核心，用于生成对应于每条原始边的偏移结果的交点，用于生成分散的矩形地面
         /// </summary>
         /// <param name="curveWithItsOffset1"></param>
         /// <param name="curveWithItsOffset2"></param>
