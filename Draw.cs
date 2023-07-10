@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace TianParameterModelForOpt
 {
@@ -48,10 +49,6 @@ namespace TianParameterModelForOpt
         /// <exception cref="System.Exception"></exception>
         public static Curve BoolSingleBlockSketchsUnion(List<Curve> single_blocks)
         {
-            /// <summary>
-            /// 将传入的所有组成一个建筑的轮廓进行布尔运算，返回一个建筑的轮廓
-            ///
-            // 排除未闭合的曲线
             for (int i = 0; i < single_blocks.Count; i++)
             {
                 Curve curve = single_blocks[i];
@@ -203,10 +200,8 @@ namespace TianParameterModelForOpt
         
         public static Curve DrawSketchOfABuilding(Land land, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List> directionWithEdges)
         {
-            // 材料
-            // 是否是boundage
+            /*--------------------------------------------材料--------------------------------------------*/
             bool boundageOrNot = land.boundageOrNot;
-
 
 
             // 在bondage和不在boundage的原始边
@@ -232,10 +227,15 @@ namespace TianParameterModelForOpt
             //List<Curve>JudgeGenerateBehaviour.JudgeTheLandCondition(buildingSpacing, buildingDepth, landCurve, edgeProcessCondition, directionWithEdges);
             List<Curve> sketchOfSingleEdge = new List<Curve>();
 
+            /// *****最后要传出的这个
             Curve sketchOfABuilding = null;
 
-            // 要先生成单个的物体
+            /*----------------------------------------以下是方法----------------------------------------------*/
 
+
+
+            /*-------------------------------------1. 先处理Edge的偏移 -----------------------------------------*/
+            //// 要先生成单个的物体
             // 判断land要生成什么类型的建筑
             List<string> buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(land.boundageDirections, land.directionAndLength, ew, ns,
                 land.GetShortestEndDepth(),
@@ -244,21 +244,102 @@ namespace TianParameterModelForOpt
                 land.GetShortestULength(),
                 land.GetShortestOLength());
 
+            // ***** 建立原有的的边与偏移结果的联系
+            Dictionary<Curve, List<Curve>> curveWithOffsetedResults = new Dictionary<Curve, List<Curve>>();
+
             // 获得四边的condition
             Dictionary<string, string> offsetBehavioursOfLandcurves = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
+
 
             // 遍历每一个方向
             foreach (string direction in offsetBehavioursOfLandcurves.Keys)
             {
                 // 遍历每一个方向的所有原始边
                 foreach (Curve originalEdge in dispatchedEdges[direction])
-                    {
+                {
                     // 对于原始边进行处理，得到单个的原始边的偏移后的边
                     List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
+                    curveWithOffsetedResults[originalEdge] = offsetedEdge;
                 }
-                // 单个边的偏移线集合
-                Curve offsetResult = EdgeProcessor(edge, landCurve, buildingDepth, buildingSpacing, edgeProcessCondition[direction]);
+
+
+                // 开始处理intersection
             }
+
+            /*-------------------------------------2. 再处理intersection -----------------------------------------*/
+            // ******* 用来装Curve和它的intersection
+            Dictionary<Curve, List<Point3d>> curveWithIntersections = new Dictionary<Curve, List<Point3d>>();
+
+            foreach (Curve curve in curveWithOffsetedResults.Keys)
+            {
+                curveWithIntersections[curve] = new List<Point3d>();
+            }
+
+
+            // 用这个排除重复出现的组合，正确的组合应该是12，13，14，23，24，34这样
+            List< HashSet<Curve> > usedCurvePairs = new List<HashSet<Curve>>();
+
+            // 运算每一对边的intersection
+            foreach (KeyValuePair<Curve, List<Curve>> pair1 in curveWithOffsetedResults)
+            {
+                foreach(KeyValuePair<Curve, List<Curve>> pair2 in curveWithOffsetedResults)
+                {
+                    // 不要自交
+                    if(pair1.Equals(pair2) == false || pair1.Key != pair2.Key)
+                    {
+                        // 配合参数数据类型
+                        Dictionary<Curve, List<Curve>>temporaryPair1 = new Dictionary<Curve, List<Curve>>();
+                        temporaryPair1.Add(pair1.Key, pair1.Value);
+                        Dictionary<Curve, List<Curve>>temporaryPair2 = new Dictionary<Curve, List<Curve>>();
+                        temporaryPair2.Add(pair2.Key, pair2.Value);
+
+                        // 用来装intersection的点的临时的参数
+                        Dictionary<Curve, List<Point3d>>curveWithIntersection1 = new Dictionary<Curve, List<Point3d>>();
+                        Dictionary<Curve, List<Point3d>>curveWithIntersection2 = new Dictionary<Curve, List<Point3d>>();
+
+                        bool isIntersection = false;
+                        
+
+                        isIntersection = Intersect.GetIntersections(temporaryPair1, temporaryPair2, landCurve, 0.001,
+                            out curveWithIntersection1,
+                            out curveWithIntersection2);
+
+                        // 储存已经处理过的键值对
+                        HashSet<Curve> usedCurvePair = new HashSet<Curve> { pair1.Key, pair2.Key };
+                        
+
+                        //curveWithIntersections.Keys.Contains(curveWithIntersection1.Keys.FirstOrDefault()
+                        // 如果已经处理过了，就不要重复处理
+                        if (isIntersection && usedCurvePairs.Contains(usedCurvePair) == false)
+                        {
+                            foreach (var curve in curveWithIntersection1.Keys)
+                            {
+                                curveWithIntersections[curve] = curveWithIntersection1[curve];
+                                usedCurvePairs.Add(usedCurvePair);
+                            }
+                        }
+                    }
+                }
+
+                /*-------------------------------------3. 最后再生成底面图形 -----------------------------------------*/
+                // 使用intersection们来生成图形
+
+                // 用来装单个边缘的对应矩形
+                List<Curve> singleBlocks = new List<Curve>();
+
+                foreach (Curve curve in curveWithIntersections.Keys)
+                {
+                    // 单个边缘对应的矩形
+                    Curve singleBlock = GenerateSketch.DrawSingleBlockSketch(curveWithIntersections[curve]);
+                    if (singleBlock != null);
+                        singleBlocks.Add(singleBlock);
+                }
+            
+                // 布尔并集
+                sketchOfABuilding = GenerateSketch.BoolSingleBlockSketchsUnion(singleBlocks);
+            }
+
+            return sketchOfABuilding;
         }
     
     }
