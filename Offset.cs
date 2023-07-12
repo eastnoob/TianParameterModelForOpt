@@ -31,8 +31,8 @@ namespace TianParameterModelForOpt
             // 输入：sideCurve，一条边界曲线
             // 输出：insideCurve，向内偏移后的曲线
             // 功能：根据输入的边界曲线，向内偏移一定距离，返回偏移后的曲线
-            Curve insideCurve = MyMethods.OffsetTowardsRightDirection(sideCurve, spacing, land);
-            Curve outsideCurve = MyMethods.OffsetTowardsRightDirection(sideCurve, depth, land);
+            Curve insideCurve = Building.OffsetTowardsRightDirection(sideCurve, spacing, land);
+            Curve outsideCurve = Building.OffsetTowardsRightDirection(sideCurve, depth, land);
 
             List<Curve> result = new List<Curve> { insideCurve, outsideCurve };
 
@@ -42,7 +42,7 @@ namespace TianParameterModelForOpt
 
         public static List<Curve> offsetEndCurve(Curve endCurve, Curve land, double spacing)
         {
-            Curve inEndCurve = MyMethods.OffsetTowardsRightDirection(endCurve, spacing, land);
+            Curve inEndCurve = Building.OffsetTowardsRightDirection(endCurve, spacing, land);
 
 
             List<Curve> result = new List<Curve> { inEndCurve };

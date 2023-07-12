@@ -16,6 +16,7 @@ using System.Runtime.Remoting.Messaging;
 using Rhino.Commands;
 using System.Numerics;
 using System.Security.Policy;
+using System.Collections;
 
 namespace TianParameterModelForOpt
 {
@@ -333,6 +334,7 @@ namespace TianParameterModelForOpt
         // 对于单个封闭线进行的分方向操作
         public Dictionary<string, List<Curve>> DispatchEdgesThroughDirection(Curve closeCurve)
         {
+
             // 方向点
             List<Point3d> directionPts;
 
@@ -1006,12 +1008,13 @@ namespace TianParameterModelForOpt
             return isBoundageOrNot;
         }
 
+        /*------------------------------------绿化率---------------------------------------------------*        
 
         /*----------------------------------------进行偏移，形成图形------------------------------------------*/
 
         //public List<Curve> EdgeProcessor(Curve edge, string direction, string condition = "edge", List<Curve> boundings = null)
         //{
-                
+
         //    // 储存偏移后的边缘
         //    List<Curve> spliters = new List<Curve>();
 
@@ -1045,7 +1048,7 @@ namespace TianParameterModelForOpt
 
         //        //！ 可能有BUG（offset为0）
         //        spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
-                
+
         //    }
 
         //    /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
@@ -1092,7 +1095,7 @@ namespace TianParameterModelForOpt
         //    return spliters;
         //}
 
-    /*-------------------------------------------------附属方法-------------------------------------------------*/
+        /*-------------------------------------------------附属方法-------------------------------------------------*/
 
         // 附属于dispatch的方法，用于生成判断点，来判断线的方向是否正确
         public Point3d JudgePointOfDispatch(Curve curve, string reversedDirection, Dictionary<string, Vector3d> directionVectorsDic)
@@ -1218,7 +1221,7 @@ namespace TianParameterModelForOpt
             foreach (Point3d pt in rmovDuplicatePtList)
             {
                 //！！ 计算可能不达预期
-                double angle = Vector3d.VectorAngle(centroid - pt, Vector3d.XAxis, Plane.WorldXY);
+                double angle = Vector3d.VectorAngle(centroid - pt, Vector3d.XAxis, Rhino.Geometry.Plane.WorldXY);
 
                 if (angle < 0) angle += 360; // correct for negative angles
                 sortable.Add((angle, pt));
@@ -1250,18 +1253,35 @@ namespace TianParameterModelForOpt
             // 创建一个多段线，该多段线由边界框中的点组成
             PolylineCurve boundingBoxPolyline = new PolylineCurve(boundingBoxCornersList);
             // 将多段线的边缘分配到四个方向（北、南、东、西）中的每一个
-            Dictionary<string, Curve> directionsDict = DispatchEdgesThroughDirection(boundingBoxPolyline);
+            Dictionary<string, List<Curve>> directionsDict = DispatchEdgesThroughDirection(boundingBoxPolyline);
+
+            // 最长的作为参考
+            //var directionsLongestOne = new Dictionary<string, List<Curve>>();
+            Dictionary<string, Curve> directionsLongestOne = new Dictionary<string, Curve>();
+
+            if (directionsDict["north"].Count == 1)
+            {
+                directionsLongestOne.Add("north", directionsDict["north"][0]);
+                directionsLongestOne.Add("south", directionsDict["south"][0]);
+                directionsLongestOne.Add("east", directionsDict["east"][0]);
+                directionsLongestOne.Add("west", directionsDict["west"][0]);
+            }
+            else
+            {
+                directionsLongestOne = directionsDict.ToDictionary(pair => pair.Key, pair => pair.Value.OrderByDescending(curve => curve.GetLength()).FirstOrDefault());
+            }
+
             // 计算每个方向的中心点和端点，并将它们存储在相应的列表中
             Point3d[] centPts = new Point3d[4];
-            centPts[0] = directionsDict["north"].PointAtNormalizedLength(0.5);
-            centPts[1] = directionsDict["south"].PointAtNormalizedLength(0.5);
-            centPts[2] = directionsDict["east"].PointAtNormalizedLength(0.5);
-            centPts[3] = directionsDict["west"].PointAtNormalizedLength(0.5);
+            centPts[0] = directionsLongestOne["north"].PointAtNormalizedLength(0.5);
+            centPts[1] = directionsLongestOne["south"].PointAtNormalizedLength(0.5);
+            centPts[2] = directionsLongestOne["east"].PointAtNormalizedLength(0.5);
+            centPts[3] = directionsLongestOne["west"].PointAtNormalizedLength(0.5);
             Point3d[] endPts = new Point3d[4];
-            endPts[0] = directionsDict["north"].PointAtEnd;
-            endPts[1] = directionsDict["south"].PointAtEnd;
-            endPts[2] = directionsDict["east"].PointAtEnd;
-            endPts[3] = directionsDict["west"].PointAtEnd;
+            endPts[0] = directionsLongestOne["north"].PointAtEnd;
+            endPts[1] = directionsLongestOne["south"].PointAtEnd;
+            endPts[2] = directionsLongestOne["east"].PointAtEnd;
+            endPts[3] = directionsLongestOne["west"].PointAtEnd;
             // 创建一个字典，其中包含四个方向的部分的点的列表
             Dictionary<string, List<Point3d>> ptDic = new Dictionary<string, List<Point3d>>();
             ptDic.Add("north_part", new List<Point3d>());
@@ -1274,32 +1294,32 @@ namespace TianParameterModelForOpt
             // 确定每个端点属于哪个方向的部分，并将其添加到相应的列表中
             foreach (Point3d pt in endPts)
             {
-                if ((directionsDict["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
+                if ((directionsLongestOne["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
 
-                    || (directionsDict["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
+                    || (directionsLongestOne["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
                 {
                     ptDic["east_part"].Add(pt);
                 }
-                if ((directionsDict["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
-                    || (directionsDict["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
+                if ((directionsLongestOne["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
+                    || (directionsLongestOne["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
                 {
                     ptDic["west_part"].Add(pt);
                 }
-                if ((directionsDict["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
-                    || (directionsDict["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
+                if ((directionsLongestOne["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
+                    || (directionsLongestOne["north"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
                 {
                     ptDic["north_part"].Add(pt);
                 }
-                if ((directionsDict["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
-                    || (directionsDict["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
-                    directionsDict["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
+                if ((directionsLongestOne["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["west"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside)
+                    || (directionsLongestOne["south"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside &&
+                    directionsLongestOne["east"].Contains(pt, plane, absulatTolerance) == PointContainment.Inside))
                 {
                     ptDic["south_part"].Add(pt);
                 }

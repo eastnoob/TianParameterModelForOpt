@@ -144,6 +144,7 @@ namespace TianParameterModelForOpt
             return initialCondition;
         }
 
+
         /// <summary>
         /// 判断每一个land方向应该如何生成图
         /// </summary>

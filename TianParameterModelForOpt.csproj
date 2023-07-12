@@ -7,6 +7,14 @@
     <Description>Description of TianParameterModelForOpt</Description>
     <TargetExt>.gha</TargetExt>
   </PropertyGroup>
+	
+  <ItemGroup>
+    <Compile Remove="GreedLand.cs" />
+  </ItemGroup>
+	
+  <ItemGroup>
+    <None Include="GreedLand.cs" />
+  </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="Grasshopper" Version="7.13.21348.13001" IncludeAssets="compile;build" />

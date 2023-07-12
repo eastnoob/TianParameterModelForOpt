@@ -13,15 +13,15 @@ namespace TianParameterModelForOpt
     {
 
         /// <summary>
-        /// 输入两条线，确定它们要不要做intersect这个动作
+        /// 输入两条线，确定它们要不要做intersect这个动作(暂时废弃)
         /// </summary>
-        /// <param name="curve1"></param>
-        /// <param name="curve2"></param>
-        /// <param name="baseCurve"></param>
-        /// <param name="tolerance"></param>
-        /// <param name="yes_or_no"></param>
-        /// <returns></returns>
-        public static Point3d judgeIfNeedIntersection(Curve curve1, Curve curve2, Curve baseCurve, double tolerance, out bool yes_or_no)
+        /// <param name="curve1">第一条线</param>
+        /// <param name="curve2">第二条线</param>
+        /// <param name="baseCurve">基地线</param>
+        /// <param name="tolerance">容差</param>
+        /// <param name="yes_or_no">输出：这两条线到底要不要相交</param>
+        /// <returns>输出两者的交点intersection</returns>
+        public static Point3d judgeIfNeedIntersection(Curve curve1, Curve curve2, Curve baseCurve, double tolerance = 0.001, out bool yes_or_no)
         {
 
             // 仅当originCrv中的两条曲线相交时候（有交点），才将offsetedCrv中的曲线进行相交操作，并传回交点们，布尔表示相交了还是没有
@@ -142,7 +142,7 @@ namespace TianParameterModelForOpt
         /// <summary>
         /// 建立原始线与intersection的关系，用来参考后续的图形生成
         /// </summary>
-        /// <param name="ptBelongToEdge"></param>
+        /// <param name="ptBelongToEdge">一个字典，key是原始边缘，value这条线生成出来的所有的intersection</param>
         /// <param name="curve"></param>
         /// <param name="intersection"></param>
         public static void determineIntersectBelongToCurve(Dictionary<Curve, List<Point3d>> ptBelongToEdge, Curve curve, Point3d intersection)
@@ -277,7 +277,7 @@ namespace TianParameterModelForOpt
             //double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
             bool yes_or_no = false;
 
-            List<Point3d> intersectionPoints = new List<Point3d>();
+            //List<Point3d> intersectionPoints = new List<Point3d>();
 
             // 若原始线相交
             if (Intersection.CurveCurve(curve1, curve2, tolerance, tolerance).Count > 0)
