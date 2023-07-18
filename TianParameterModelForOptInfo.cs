@@ -13,7 +13,7 @@ namespace TianParameterModelForOpt
         public override Bitmap Icon => null;
 
         //Return a short string describing the purpose of this GHA library.
-        public override string Description => "";
+        public override string Description => "123";
 
         public override Guid Id => new Guid("0e2f757a-1378-469f-b307-f5d0a2d73d62");
 

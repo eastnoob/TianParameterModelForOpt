@@ -23,8 +23,8 @@ namespace TianParameterModelForOpt
         Land land;
 
         // 计算数值
-        public double greedLandArea;
-        public double greeningRate;
+        //public double greedLandArea;
+        //public double greeningRate;
 
         public double greenLandArea;
 
@@ -32,16 +32,16 @@ namespace TianParameterModelForOpt
         public Brep greenLand;
 
         // 计算图形
-        public Brep greenLandSurface;
+        public Brep greenLandBrep;
 
 
         //构造器
-        public GreenLand(double roadWidth, Land land)
+        public GreenLand(Land land, double roadWidth)
         {
             this.roadWidth = roadWidth;
             this.land = land;
 
-            this.greenLandSurface = GreenLandGenerate(out greenLandArea);
+            this.greenLandBrep = GreenLandGenerate(out greenLandArea);
         }
 
         //方法

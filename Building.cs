@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using static Grasshopper.DataTree<T>;
+//using static Grasshopper.DataTree<T>;
 
 namespace TianParameterModelForOpt
 {
@@ -31,20 +31,26 @@ namespace TianParameterModelForOpt
         int floorNum;
 
         // 楼层平面图
-        List<Curve> floorSketch;
+        public Curve floorSketch;
 
         // 是否是boundage
         bool isBoundageOrNot;
 
+        // *********** 楼层实体图形
+        public List<Brep> buildingBrep;
+
         // 构造器，传入Land类的land，楼层高度，楼层数量，和楼层平面图
-        public Building(Land land, double groundFloorHeight, double standardFloorHeight, List<int> floorNums, List<Curve> floorSketchs)
+        public Building(Land land, double groundFloorHeight, double standardFloorHeight, int floorNum/*, Curve floorSketchs*/)
         {
             this.land = land;
             this.groundFloorHeight = groundFloorHeight;
             this.standardFloorHeight = standardFloorHeight;
             this.floorNum = floorNum;
-            this.floorSketch = floorSketch;
+            this.floorSketch = Draw.DrawSketchOfABuilding(land);
             this.isBoundageOrNot = false;
+
+            // ********** 楼层实体图形
+            this.buildingBrep = DrawBuildingFloorBlocks();
         }
 
         /*---------------------------------------挤出向量---------------------------------------*/
@@ -88,7 +94,7 @@ namespace TianParameterModelForOpt
         public Dictionary<Curve, Vector3d> DuplicateFloorSketchAndVector(Curve sketchOfBuildingFloor, int floorNum)
         {
             //Curve[] allFloorSketchs = new Curve[floorNum];
-
+            //floorNum = this.floorNum;
             Dictionary<Curve, Vector3d> sketchWithDirection = new Dictionary<Curve, Vector3d>();
 
             // 这个用于存储
@@ -184,17 +190,20 @@ namespace TianParameterModelForOpt
         /// <summary>
         /// 多层组合为一个建筑
         /// </summary>
-        /// <param name="sketchOfBuildingFloors"></param>
+        /// <param name="sketchOfTheLand"></param>
         /// <param name="floorNum"></param>
         /// <param name="isBoundage"></param>
         /// <returns></returns>
-        public List<Brep> DrawBuildingFloorBlocks(Curve sketchOfBuildingFloors, int floorNum, bool isBoundage)
+        public List<Brep> DrawBuildingFloorBlocks(/*Curve sketchOfTheLand, int floorNum, bool isBoundage*/)
         {
+            Curve sketchOfTheLand = this.floorSketch;
+            int floorNum = this.floorNum;
+            bool isBoundage = land.isABoundageLand;
             // 用来装一个建筑的所有层的实体
             List<Brep> building = new List<Brep>();
             //Brep[] building = new Brep[floorNum];
 
-            Dictionary<Curve, Vector3d> materials = DrawAllFloorsOfABuilding(sketchOfBuildingFloors, floorNum, isBoundage);
+            Dictionary<Curve, Vector3d> materials = DrawAllFloorsOfABuilding(sketchOfTheLand, floorNum, isBoundage);
 
             //int index = 0;
             foreach (KeyValuePair<Curve, Vector3d> pair in materials)
@@ -233,8 +242,10 @@ namespace TianParameterModelForOpt
             return area;
         }
 
-        public double GetEstimatedRoomAccount(List<Curve> floors)
+        public double GetEstimatedRoomAccount(/*List<Curve> floors*/)
         {
+            List<Curve> floors = DuplicateFloorSketchAndVector(floorSketch).Keys.ToList();
+
             double buildingDepth = land.GetBuildingDepth();
 
             // 总的建筑面积

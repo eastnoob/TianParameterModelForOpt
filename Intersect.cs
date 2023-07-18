@@ -21,7 +21,7 @@ namespace TianParameterModelForOpt
         /// <param name="tolerance">容差</param>
         /// <param name="yes_or_no">输出：这两条线到底要不要相交</param>
         /// <returns>输出两者的交点intersection</returns>
-        public static Point3d judgeIfNeedIntersection(Curve curve1, Curve curve2, Curve baseCurve, double tolerance = 0.001, out bool yes_or_no)
+        public static Point3d judgeIfNeedIntersection(Curve curve1, Curve curve2, Curve baseCurve, out bool yes_or_no, double tolerance = 0.001)
         {
 
             // 仅当originCrv中的两条曲线相交时候（有交点），才将offsetedCrv中的曲线进行相交操作，并传回交点们，布尔表示相交了还是没有

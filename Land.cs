@@ -22,17 +22,23 @@ namespace TianParameterModelForOpt
 {
     public class Land
     {
-        // 成员变量，包含以下属性：baseCurves, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing
-        public List<Curve> baseCurves;
-        public List<Curve> lands;
+        // 输入参数
+        //public List<Curve> baseCurves;
+        //public Curve baseCurve;
+        //public List<Curve> lands;
         public Curve landCurve;
-        public Curve baseField;
+        public Curve baseCurve;
         public double roomDepth;
         public double roomWidth;
         public double corridorWidth;
         public double staircaseWidth;
         public double elevatorWidth;
         public double buildingSpacing;
+        public List<Curve> zoneWestEast;
+        public List<Curve> zoneNorthSouth;
+
+
+        // 计算参数
         public double buildingLandSpacing;
 
         public double absulatTolerance;
@@ -40,9 +46,9 @@ namespace TianParameterModelForOpt
         // 判断地块是否处于基地边界上
         public bool isABoundageLand;
         
-        public List<Curve> zones;
         // 判断地块的方向隶属
         public string isWestOrEast;
+        public string isNorthOrSouth;
 
         // 初始化时候分好方向
         public Dictionary<string, List<Curve>> dispatchedEdges;
@@ -60,44 +66,48 @@ namespace TianParameterModelForOpt
         public Dictionary<string, List<Curve>> fourDirectionsEdges;
         public Dictionary<string, double> directionAndLength;
 
-        // 东西南北
-        public string westOrEast;
-        public string northOrSouth;
+        //// 东西南北
+        //public string westOrEast;
+        //public string northOrSouth;
 
         // 特殊变量，看情况决定是否启用
         public double floorHeight;
         public double floorNum;
 
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
-        public Land(List<Curve> baseCurves, List<Curve> lands, double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing)
+        public Land (/*List<Curve> baseCurves, */ Curve unoffsetedBaseCurve, Curve landCurve, /*List<Curve> lands,*/
+        double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing,
+            List<Curve> zoneWestEast, List<Curve> zoneNorthSouth)
         {
-            this.baseCurves = baseCurves;
-            this.lands = lands;
+            //this.baseCurves = baseCurves;
+            //this.baseCurve = baseCurve;
+            //this.lands = lands;
             this.landCurve = landCurve;
-            this.baseField = baseField;
+            this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0]; ;
             this.roomDepth = roomDepth;
             this.roomWidth = roomWidth;
             this.corridorWidth = corridorWidth;
             this.staircaseWidth = staircaseWidth;
             this.elevatorWidth = elevatorWidth;
             this.buildingSpacing = buildingSpacing;
-            this.buildingLandSpacing = buildingSpacing / 2;
-
-
-            this.absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
-
-            this.zones = zones;
+            
 
             // 以下是计算属性
-            this.isABoundageLand = IsABoundageLand(landCurve, baseField, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage, out boundageDirectionsInLand);
-            this.isWestOrEast = IsWestOrEast(zones, landCurve);
+            this.absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
+
+
+            this.buildingLandSpacing = buildingSpacing / 2;
+            this.isABoundageLand = IsABoundageLand(landCurve, this.baseCurve, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage, out boundageDirectionsInLand);
+            
+            this.isWestOrEast = IsWestOrEast(zoneWestEast, landCurve);
+            this.isNorthOrSouth = IsNorthOrSouth(zoneNorthSouth, landCurve);
 
             this.dispatchedEdges = DispatchEdgesThroughDirection(landCurve);
 
             this.directionAndLength = GetLengthsAndLandlines(landCurve, out fourDirectionsEdges);
 
-            this.westOrEast = IsWestOrEast(zones, landCurve);
-            this.northOrSouth = IsNorthOrSouth(zones, landCurve);
+            //this.westOrEast = IsWestOrEast(zones, landCurve);
+            //this.northOrSouth = IsNorthOrSouth(zones, landCurve);
         }
 
 

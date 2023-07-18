@@ -1,11 +1,6 @@
 ﻿using Rhino;
 using Rhino.Geometry;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Linq;
 
 namespace TianParameterModelForOpt
 {
@@ -198,7 +193,7 @@ namespace TianParameterModelForOpt
     
     
         
-        public static Curve DrawSketchOfABuilding(Land land, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List> directionWithEdges)
+        public static Curve DrawSketchOfABuilding(Land land/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
         {
             /*--------------------------------------------材料--------------------------------------------*/
             bool boundageOrNot = land.boundageOrNot;
@@ -221,8 +216,8 @@ namespace TianParameterModelForOpt
 
 
             //东西南北
-            string ew = land.westOrEast;
-            string ns = land.northOrSouth;
+            string ew = land.isWestOrEast;
+            string ns = land.isNorthOrSouth;
 
             //List<Curve>JudgeGenerateBehaviour.JudgeTheLandCondition(buildingSpacing, buildingDepth, landCurve, edgeProcessCondition, directionWithEdges);
             List<Curve> sketchOfSingleEdge = new List<Curve>();

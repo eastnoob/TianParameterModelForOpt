@@ -73,128 +73,132 @@ namespace TianParameterModelForOpt
 
         /*以下是处理四种建筑形态的方法*/
 
-        public static Tuple<List<Tuple<Point3d, Point3d>>, List<Tuple<Point3d, Point3d>>> ProcessB(Dictionary<Tuple<Point3d, Point3d>, double> origns_lengths, List<Tuple<Point3d, Point3d>> first_out_spliters_twin, List<Tuple<Point3d, Point3d>> first_inner_spliters_twin, string condition = "short")
-        {
-            /// <summary>
-            /// 
-            /// </summary>
+        //public static Tuple<List<Tuple<Point3d, Point3d>>, List<Tuple<Point3d, Point3d>>> ProcessB(Dictionary<Tuple<Point3d, Point3d>, 
+        //    double> origns_lengths, 
+        //    List<Tuple<Point3d, Point3d>> first_out_spliters_twin, 
+        //    List<Tuple<Point3d, Point3d>> first_inner_spliters_twin, 
+        //    string condition = "short")
+        //{
+        //    /// <summary>
+        //    /// 
+        //    /// </summary>
 
-            List<Tuple<Point3d, Point3d>> out_spliters_twin = new List<Tuple<Point3d, Point3d>>();
-            List<Tuple<Point3d, Point3d>> inner_spliters_twin = new List<Tuple<Point3d, Point3d>>();
+        //    List<Tuple<Point3d, Point3d>> out_spliters_twin = new List<Tuple<Point3d, Point3d>>();
+        //    List<Tuple<Point3d, Point3d>> inner_spliters_twin = new List<Tuple<Point3d, Point3d>>();
 
-            if (condition == "short")
-            {
-                List<string> min_dir = new List<string>();
+        //    if (condition == "short")
+        //    {
+        //        List<string> min_dir = new List<string>();
 
-                double min_length = origns_lengths.Values.Min();
-                foreach (var orign in origns_lengths)
-                {
-                    if (orign.Value == min_length)
-                    {
-                        foreach (var dir_with_edges in relationship_dic)
-                        {
-                            if (dir_with_edges.Value.Contains(orign.Key.Item1) || dir_with_edges.Value.Contains(orign.Key.Item2))
-                            {
-                                min_dir.Add(dir_with_edges.Key);
-                            }
-                        }
-                    }
-                }
+        //        double min_length = origns_lengths.Values.Min();
+        //        foreach (var orign in origns_lengths)
+        //        {
+        //            if (orign.Value == min_length)
+        //            {
+        //                foreach (var dir_with_edges in relationship_dic)
+        //                {
+        //                    if (dir_with_edges.Value.Contains(orign.Key.Item1) || dir_with_edges.Value.Contains(orign.Key.Item2))
+        //                    {
+        //                        min_dir.Add(dir_with_edges.Key);
+        //                    }
+        //                }
+        //            }
+        //        }
 
-                List<double> len_of_short = new List<double>();
-                foreach (var direction in min_dir)
-                {
-                    List<double> len_of_single_short = new List<double>();
-                    foreach (var edge in relationship_dic[direction])
-                    {
-                        len_of_single_short.Add(origns_lengths[new Tuple<Point3d, Point3d>(edge, edge)]);
-                    }
-                    len_of_short.AddRange(len_of_single_short);
-                }
+        //        List<double> len_of_short = new List<double>();
+        //        foreach (var direction in min_dir)
+        //        {
+        //            List<double> len_of_single_short = new List<double>();
+        //            foreach (var edge in relationship_dic[direction])
+        //            {
+        //                len_of_single_short.Add(origns_lengths[new Tuple<Point3d, Point3d>(edge, edge)]);
+        //            }
+        //            len_of_short.AddRange(len_of_single_short);
+        //        }
 
-                double max_len = len_of_short.Max();
-                Tuple<Point3d, Point3d> longest_edge = null;
-                foreach (var orign in origns_lengths)
-                {
-                    if (orign.Value == max_len)
-                    {
-                        longest_edge = orign.Key;
-                        break;
-                    }
-                }
+        //        double max_len = len_of_short.Max();
+        //        Tuple<Point3d, Point3d> longest_edge = null;
+        //        foreach (var orign in origns_lengths)
+        //        {
+        //            if (orign.Value == max_len)
+        //            {
+        //                longest_edge = orign.Key;
+        //                break;
+        //            }
+        //        }
 
-                List<Tuple<Point3d, Point3d>> abandoned_origns = new List<Tuple<Point3d, Point3d>>();
-                foreach (var direction in min_dir)
-                {
-                    if (relationship_dic[direction].Contains(longest_edge.Item1) || relationship_dic[direction].Contains(longest_edge.Item2))
-                    {
-                        foreach (var edge in relationship_dic[direction])
-                        {
-                            if (edge != longest_edge.Item1 && edge != longest_edge.Item2)
-                            {
-                                abandoned_origns.Add(new Tuple<Point3d, Point3d>(edge, edge));
-                            }
-                        }
-                    }
-                }
+        //        List<Tuple<Point3d, Point3d>> abandoned_origns = new List<Tuple<Point3d, Point3d>>();
+        //        foreach (var direction in min_dir)
+        //        {
+        //            if (relationship_dic[direction].Contains(longest_edge.Item1) || relationship_dic[direction].Contains(longest_edge.Item2))
+        //            {
+        //                foreach (var edge in relationship_dic[direction])
+        //                {
+        //                    if (edge != longest_edge.Item1 && edge != longest_edge.Item2)
+        //                    {
+        //                        abandoned_origns.Add(new Tuple<Point3d, Point3d>(edge, edge));
+        //                    }
+        //                }
+        //            }
+        //        }
 
-                List<Tuple<Point3d, Point3d>> abandoned_edges = new List<Tuple<Point3d, Point3d>>();
-                foreach (var orign in abandoned_origns)
-                {
-                    abandoned_edges.AddRange(offsted[orign]);
-                }
+        //        List<Tuple<Point3d, Point3d>> abandoned_edges = new List<Tuple<Point3d, Point3d>>();
+        //        foreach (var orign in abandoned_origns)
+        //        {
+        //            abandoned_edges.AddRange(offsted[orign]);
+        //        }
 
-                foreach (var pair in first_out_spliters_twin.Concat(first_inner_spliters_twin))
-                {
-                    if (abandoned_edges.Contains(pair.Item1) || abandoned_edges.Contains(pair.Item2))
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        if (first_out_spliters_twin.Contains(pair))
-                        {
-                            out_spliters_twin.Add(pair);
-                        }
-                        else if (first_inner_spliters_twin.Contains(pair))
-                        {
-                            inner_spliters_twin.Add(pair);
-                        }
-                    }
-                }
+        //        foreach (var pair in first_out_spliters_twin.Concat(first_inner_spliters_twin))
+        //        {
+        //            if (abandoned_edges.Contains(pair.Item1) || abandoned_edges.Contains(pair.Item2))
+        //            {
+        //                continue;
+        //            }
+        //            else
+        //            {
+        //                if (first_out_spliters_twin.Contains(pair))
+        //                {
+        //                    out_spliters_twin.Add(pair);
+        //                }
+        //                else if (first_inner_spliters_twin.Contains(pair))
+        //                {
+        //                    inner_spliters_twin.Add(pair);
+        //                }
+        //            }
+        //        }
 
-                return Tuple.Create(out_spliters_twin, inner_spliters_twin);
-            }
-            else if (condition == "general")
-            {
-                foreach (var pair in first_out_spliters_twin.Concat(first_inner_spliters_twin))
-                {
-                    foreach (var edge in offset_with_orign.Keys)
-                    {
-                        if (offseted_and_beused.Contains(pair.Item1) && offseted_and_beused.Contains(pair.Item2))
-                        {
-                            if (CurveCurveIntersection(offset_with_orign[pair.Item1], offset_with_orign[pair.Item2], tolerance: tol) != null)
-                            {
-                                if (first_out_spliters_twin.Contains(pair))
-                                {
-                                    out_spliters_twin.Add(pair);
-                                }
-                                else if (first_inner_spliters_twin.Contains(pair))
-                                {
-                                    inner_spliters_twin.Add(pair);
-                                }
-                            }
-                        }
-                    }
-                }
+        //        return Tuple.Create(out_spliters_twin, inner_spliters_twin);
+        //    }
+        //    else if (condition == "general")
+        //    {
+        //        foreach (var pair in first_out_spliters_twin.Concat(first_inner_spliters_twin))
+        //        {
+        //            foreach (var edge in offset_with_orign.Keys)
+        //            {
+        //                if (offseted_and_beused.Contains(pair.Item1) && offseted_and_beused.Contains(pair.Item2))
+        //                {
+        //                    if (CurveCurveIntersection(offset_with_orign[pair.Item1], offset_with_orign[pair.Item2], tolerance: tol) != null)
+        //                    {
+        //                        if (first_out_spliters_twin.Contains(pair))
+        //                        {
+        //                            out_spliters_twin.Add(pair);
+        //                        }
+        //                        else if (first_inner_spliters_twin.Contains(pair))
+        //                        {
+        //                            inner_spliters_twin.Add(pair);
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //        }
 
-                return Tuple.Create(out_spliters_twin, inner_spliters_twin);
-            }
-            else
-            {
-                throw new ArgumentException("Invalid condition value.");
-            }
-        }
+        //        return Tuple.Create(out_spliters_twin, inner_spliters_twin);
+        //    }
+        //    else
+        //    {
+        //        throw new ArgumentException("Invalid condition value.");
+        //    }
+        //}
 
 
         // 判断两条线有没有延长线上的交点的方法
@@ -222,7 +226,7 @@ namespace TianParameterModelForOpt
                 // 计算交点坐标，让其成为一点物体
                 intersection = line1.PointAt(para1);
                 // 如果相交，则检查交点是否在给定曲线内
-                if (land.Contains(intersection))
+                if (land.Contains(intersection, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == Rhino.Geometry.PointContainment.Inside)
                 {
                     // 输出交点
                     Rhino.RhinoApp.WriteLine("交点坐标为：" + intersection.ToString());
