@@ -30,10 +30,12 @@ namespace TianParameterModelForOpt
         {
             // 闭合的曲线输入，名为base，用于表达经过退界后的基地轮廓
             pManager.AddCurveParameter("Base", "B", "Base", GH_ParamAccess.item);
+
             // 一组闭合曲线输入，名为lands，表示细分后的土地
             pManager.AddCurveParameter("Lands", "L", "Divided Lands", GH_ParamAccess.list);
             // 列表数字输输入，名为floorNum，用于表达每一个建筑的层数
-            pManager.AddNumberParameter("FloorNum", "F", "Floornum", GH_ParamAccess.list);
+            pManager.AddIntegerParameter("FloorNum", "F", "Floornum", GH_ParamAccess.list);
+
             // 单数字输入，名为floorHeight，用于表达每一个层的层高
             pManager.AddNumberParameter("StandardFloorHeight", "SFH", "FloorHeight", GH_ParamAccess.item);
             // 单数字输入，名为GroundFloorHeight，用于表达首层的层高
@@ -50,10 +52,11 @@ namespace TianParameterModelForOpt
             pManager.AddNumberParameter("ElevatorWidth", "E", "ElevatorWidth", GH_ParamAccess.item);
             // 单数字输入，名为BuildingSpacing，用于建筑的间距
             pManager.AddNumberParameter("BuildingSpacing", "BS", "BuildingSpacing", GH_ParamAccess.item);
+
             // 列表输入，名为ZoneWestEast，指示东区与西区
-            pManager.AddBooleanParameter("ZoneWestEast", "Z:WE'", "ZoneWestEast", GH_ParamAccess.list);
+            pManager.AddCurveParameter("ZoneWestEast", "Z:WE'", "ZoneWestEast", GH_ParamAccess.list);
             // 列表输入，名为ZoneNorthSouth，指示南区与北区
-            pManager.AddBooleanParameter("ZoneNorthSouth", "Z-NS", "ZoneNorthSouth", GH_ParamAccess.list);
+            pManager.AddCurveParameter("ZoneNorthSouth", "Z-NS", "ZoneNorthSouth", GH_ParamAccess.list);
 
         }
 
@@ -122,8 +125,11 @@ namespace TianParameterModelForOpt
 
             // 注册
             if (!DA.GetData("Base", ref baseCurve)) return;
+            //DA.GetDataList("Lands", lands);
             if(!DA.GetDataList("Lands", lands)) return;
+
             if(!DA.GetDataList("FloorNum", floorNum)) return;
+
             if(!DA.GetData("StandardFloorHeight", ref standardFloorHeight)) return;
             if(!DA.GetData("GroundFloorHeight", ref groundFloorHeight)) return;
             if(!DA.GetData("RoomDepth", ref roomDepth)) return;
@@ -132,8 +138,10 @@ namespace TianParameterModelForOpt
             if(!DA.GetData("StaircaseWidth", ref staircaseWidth)) return;
             if(!DA.GetData("ElevatorWidth", ref elevatorWidth)) return;
             if (!DA.GetData("BuildingSpacing", ref buildingSpacing)) return;
-            if(!DA.GetDataList("ZoneWestEast", zoneWestEast)) return;
-            if(!DA.GetDataList("ZoneNorthSouth", zoneNorthSouth)) return;
+
+            //DA.GetDataList("ZoneWestEast", new List<Curve>());
+            if (!DA.GetDataList("ZoneWestEast", zoneWestEast)) return;
+            if (!DA.GetDataList("ZoneNorthSouth", zoneNorthSouth)) return;
 
             // 装载变量
             // == 图形
@@ -163,12 +171,18 @@ namespace TianParameterModelForOpt
             // 用于测试
             List<Curve> sketchs = new List<Curve>();
 
+            //floorNum = new List<int>() { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+
             // 函数执行
-            int index = 0;
-            while (index < lands.Count)
+            int landIndex = 0;
+
+            while (landIndex < lands.Count)
             {
+                //var a = floorNum.ToString();
+                Rhino.RhinoApp.WriteLine("======================================== FloorNum: ======================================================" + floorNum.ToString());
+                //Console.WriteLine("======================================== FloorNum: ======================================================" + floorNum.ToString());
                 // 初始化Land
-                Land thisLand = new Land(baseCurve, lands[index], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
+                Land thisLand = new Land(baseCurve, lands[landIndex], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
 
                 //------------------------------------------------以下用于测试-----------------------------------------------
 
@@ -180,42 +194,59 @@ namespace TianParameterModelForOpt
 
                 //------------------------------------------------以上用于测试-----------------------------------------------
 
-                // 初始化building
-                Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[index]);
-
-                //// 生成建筑的形体
-                //thisBuilding.DrawBuildingFloorBlocks();
-                // 装载保存
-                allBuildings.Add(thisBuilding.buildingBrep);
-
-                // 绿地
-                GreenLand greenLand = new GreenLand(thisLand, roomWidth);
-                allGreenLand.Add(greenLand.greenLandBrep);
-
-                /*-------------------------------------------指标--------------------------------------------------------*/
-
-                // 材料
-
+                // 先传出base的面积
                 if (offsetedBaseCurveArea == 0)
                     offsetedBaseCurveArea = AreaMassProperties.Compute(thisLand.baseCurve).Area;
 
+                // 条件判断，如果land不生成建筑，则跳过，将一个null放入建筑列表占位
+                if (thisLand.buildingTypeOfThisLandCurve.Contains("NO"))
+                {
+                    allBuildings.Add(null);
 
-                // 建筑基底面积（单个）
-                totalBuildingArea += AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
-                //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+                    // 绿地
+                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                    allGreenLand.Add(greenLand.greenLandBrep);
 
-                // 建造面积（单个
-                totalConstructArea += (AreaMassProperties.Compute(thisBuilding.floorSketch).Area) * floorNum[index];
-                //double constructArea = buildingArea * floorNum[index];
+                    // 绿地面积(单个)
+                    totalGreenLandArea += greenLand.greenLandArea;
 
-                // 绿地面积(单个)
-                totalGreenLandArea += greenLand.greenLandArea;
-                //double greenLandArea = greenLand.greenLandArea;
+                }
+                else
+                {
+                    // 初始化building
+                    Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
 
-                // 房间数量（单个）
-                roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                    // 装载保存
+                    allBuildings.Add(thisBuilding.buildingBrep);
 
-                index ++;
+                    // 绿地
+                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                    allGreenLand.Add(greenLand.greenLandBrep);
+
+
+                    // 建筑基底面积（单个）
+                    totalBuildingArea += AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+                    //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+
+                    // 建造面积（单个
+                    totalConstructArea += (AreaMassProperties.Compute(thisBuilding.floorSketch).Area) * floorNum[landIndex];
+                    //double constructArea = buildingArea * floorNum[index];
+
+                    // 绿地面积(单个)
+                    totalGreenLandArea += greenLand.greenLandArea;
+                    //double greenLandArea = greenLand.greenLandArea;
+
+                    // 房间数量（单个）
+                    roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                }
+
+
+
+
+                /*-------------------------------------------指标--------------------------------------------------------*/
+
+
+                landIndex ++;
                     
             }
 

@@ -31,8 +31,8 @@ namespace TianParameterModelForOpt
             // 输入：sideCurve，一条边界曲线
             // 输出：insideCurve，向内偏移后的曲线
             // 功能：根据输入的边界曲线，向内偏移一定距离，返回偏移后的曲线
-            Curve insideCurve = OffsetTowardsRightDirection(sideCurve, spacing, land);
-            Curve outsideCurve = OffsetTowardsRightDirection(sideCurve, depth, land);
+            Curve outsideCurve = OffsetTowardsRightDirection(sideCurve, spacing, land);
+            Curve insideCurve = OffsetTowardsRightDirection(sideCurve, depth, land);
 
             List<Curve> result = new List<Curve> { insideCurve, outsideCurve };
 
@@ -61,13 +61,24 @@ namespace TianParameterModelForOpt
         /// <returns></returns>
         public static Curve OffsetTowardsRightDirection(Curve curve, double distance, Curve land)
         {
-            // 获取offsetPoint，使用getOffsetPoint方法
-            Point3d offsetPoint = GetDirections(curve, land);
+            // 如果传入是0，代表其是side-boundage
+            if (distance == 0)
+            {
+                //复制curve自己
+                return curve.DuplicateCurve();
+            }
 
-            //进行偏移，方向点为offsetPoint，距离为distance，基准平面为世界坐标系XY平面
-            Curve offsetCurve = curve.Offset(offsetPoint, Plane.WorldXY.Normal, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];
+            else
+            {
+                // 获取offsetPoint，使用getOffsetPoint方法
+                Point3d offsetPoint = GetDirections(curve, land);
 
-            return offsetCurve;
+                //进行偏移，方向点为offsetPoint，距离为distance，基准平面为世界坐标系XY平面
+                Curve offsetCurve = curve.Offset(offsetPoint, Plane.WorldXY.Normal, distance, absulatTolerance, CurveOffsetCornerStyle.Sharp)[0];
+
+                return offsetCurve;
+            }
+
         }
 
 

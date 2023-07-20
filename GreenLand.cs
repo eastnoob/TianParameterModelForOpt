@@ -56,26 +56,43 @@ namespace TianParameterModelForOpt
                 landCurve = Curve.ProjectToPlane(landCurve, Plane.WorldXY);
             }
 
+
             // 获得绿地的边界曲线
-            Curve[] greenLand = landCurve.Offset(AreaMassProperties.Compute(landCurve).Centroid,
-                Plane.WorldXY.Normal,
-                roadWidth / 2,
-                RhinoDoc.ActiveDoc.ModelAbsoluteTolerance,
-                CurveOffsetCornerStyle.Sharp);
-
-            Curve greenLandCurve = greenLand[0];
-
-            // 如果greenland长度不为1，取面积最大的
-            if (greenLand.Length > 1)
+            Curve greenLandCurve;
+            // 如果其没有生成，那么将整个landCurve作为绿地边界
+            if (land.buildingTypeOfThisLandCurve.Contains("NO"))
             {
-                double[] greenLandsarea = new double[greenLand.Length];
-
-                for (int i = 0; i < greenLand.Length; i++)
-                {
-                    greenLandsarea[i] = AreaMassProperties.Compute(greenLand[i]).Area;
-                }
-                greenLandCurve = greenLand[Array.IndexOf(greenLandsarea, greenLandsarea.Max())];
+                greenLandCurve = landCurve;
             }
+            else
+            {
+                Curve[] greenLand = landCurve.Offset(AreaMassProperties.Compute(landCurve).Centroid,
+                                    Plane.WorldXY.Normal,
+                                    roadWidth / 2,
+                                    RhinoDoc.ActiveDoc.ModelAbsoluteTolerance,
+                                    CurveOffsetCornerStyle.Sharp);
+
+
+                // 如果greenland长度不为1，取面积最大的
+                if (greenLand.Length > 1)
+                {
+                    double[] greenLandsarea = new double[greenLand.Length];
+
+                    for (int i = 0; i < greenLand.Length; i++)
+                    {
+                        greenLandsarea[i] = AreaMassProperties.Compute(greenLand[i]).Area;
+                    }
+                    greenLandCurve = greenLand[Array.IndexOf(greenLandsarea, greenLandsarea.Max())];
+                }
+                else
+                {
+                    greenLandCurve = greenLand[0];
+                }
+            }
+            
+
+
+
 
             // 以landCurve为边界生成面
             Brep greenLandSurface = Brep.CreatePlanarBreps(greenLandCurve, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance)[0];

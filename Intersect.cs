@@ -161,8 +161,13 @@ namespace TianParameterModelForOpt
         /// <returns>
         /// bool yes_or_no, 如果交了就传回true
         /// </returns>
-        public static bool GetIntersections(Dictionary<Curve, List<Curve>> curveWithItsOffset1, Dictionary<Curve, List<Curve>> curveWithItsOffset2, Curve landCurve, double tolerance,
-                                                         out Dictionary<Curve, List<Point3d>> curveWithIntersection1, out Dictionary<Curve, List<Point3d>> curveWithIntersection2 )
+        //public static bool GetIntersections(Dictionary<Curve, List<Curve>> curveWithItsOffset1, Dictionary<Curve, List<Curve>> curveWithItsOffset2, Curve landCurve, double tolerance,
+        //                                                 out Dictionary<Curve, List<Point3d>> curveWithIntersection1, 
+        //                                                 out Dictionary<Curve, List<Point3d>> curveWithIntersection2 )
+
+        public static bool GetIntersections(KeyValuePair<Curve, List<Curve>> curveWithItsOffset1, KeyValuePair<Curve, List<Curve>> curveWithItsOffset2, Curve landCurve, double tolerance,
+                                                         out Dictionary<Curve, List<Point3d>> curveWithIntersection1,
+                                                         out Dictionary<Curve, List<Point3d>> curveWithIntersection2)
         {
             // 装intersection
             List<Curve> intersections = new List<Curve>();
@@ -170,8 +175,8 @@ namespace TianParameterModelForOpt
             List<Point3d> outsideIntersection = new List<Point3d>();
             List<Point3d> insideIntersection = new List<Point3d>();
 
-            Curve originCurve1 = curveWithItsOffset1.Keys.First();
-            Curve originCurve2 = curveWithItsOffset2.Keys.First();
+            Curve originCurve1 = curveWithItsOffset1.Key;
+            Curve originCurve2 = curveWithItsOffset2.Key;
 
             List<Point3d> outsideOffsets = new List<Point3d>();
 
@@ -184,11 +189,11 @@ namespace TianParameterModelForOpt
                 // 若相交，则GetIntersectionOfOffsetResults，以得到交点
                 // 先判断每个字典的list的长度，判断其是不是end类
                 // 偏移结果长度为1，属于end类，需要与内外两个都做intersect
-                curveWithItsOffset2.Values.First().Count();
+                //curveWithItsOffset2.Values.First().Count();
 
                 // ! 可能犀牛的版本不支持这个方法
-                var countOfFirstOffset = curveWithItsOffset1.Values.FirstOrDefault()?.Count;
-                var countOfSecondOffset = curveWithItsOffset2.Values.FirstOrDefault()?.Count;
+                var countOfFirstOffset = curveWithItsOffset1.Value?.Count;
+                var countOfSecondOffset = curveWithItsOffset2.Value?.Count;
 
                 // 如果第一个是end
                 if (countOfFirstOffset == 1)
@@ -196,10 +201,11 @@ namespace TianParameterModelForOpt
                     // 如果第二个不是end
                     if (countOfSecondOffset != 1)
                     {
-                        Curve insideOffset2 = curveWithItsOffset2.Values.FirstOrDefault()[0];
-                        Curve outsideOffset2 = curveWithItsOffset2.Values.FirstOrDefault()[1];
+                        // inside 和 outside的offset【可能反了】
+                        Curve insideOffset2 = curveWithItsOffset2.Value[0];
+                        Curve outsideOffset2 = curveWithItsOffset2.Value[1];
 
-                        Curve endOffset1 = curveWithItsOffset1.Values.FirstOrDefault()[0];
+                        Curve endOffset1 = curveWithItsOffset1.Value[0];
 
                         // end的边与in，out都做intersect
                         insideIntersection.AddRange(GetIntersectionOfOffsetResults(insideOffset2, endOffset1, landCurve, tolerance));
@@ -218,11 +224,11 @@ namespace TianParameterModelForOpt
                     // 如果第二个不是end
                     if (countOfSecondOffset != 1)
                     {
-                        Curve insideOffset1 = curveWithItsOffset1.Values.FirstOrDefault()[0];
-                        Curve outsideOffset1 = curveWithItsOffset1.Values.FirstOrDefault()[1];
+                        Curve insideOffset1 = curveWithItsOffset1.Value[0];
+                        Curve outsideOffset1 = curveWithItsOffset1.Value[1];
 
-                        Curve insideOffset2 = curveWithItsOffset2.Values.FirstOrDefault()[0];
-                        Curve outsideOffset2 = curveWithItsOffset2.Values.FirstOrDefault()[1];
+                        Curve insideOffset2 = curveWithItsOffset2.Value[0];
+                        Curve outsideOffset2 = curveWithItsOffset2.Value[1];
 
                         // 外与外交，内与内交
                         insideIntersection.AddRange(GetIntersectionOfOffsetResults(insideOffset1, insideOffset2, landCurve, tolerance));
@@ -234,10 +240,10 @@ namespace TianParameterModelForOpt
                     // 如果第二个是end
                     else if (countOfSecondOffset == 1)
                     {
-                        Curve insideOffset1 = curveWithItsOffset1.Values.FirstOrDefault()[0];
-                        Curve outsideOffset1 = curveWithItsOffset1.Values.FirstOrDefault()[1];
+                        Curve insideOffset1 = curveWithItsOffset1.Value[0];
+                        Curve outsideOffset1 = curveWithItsOffset1.Value[1];
 
-                        Curve endOffset2 = curveWithItsOffset2.Values.FirstOrDefault()[0];
+                        Curve endOffset2 = curveWithItsOffset2.Value[0];
 
                         // end的边1与in2，out2都做intersect
                         insideIntersection.AddRange(GetIntersectionOfOffsetResults(insideOffset1, endOffset2, landCurve, tolerance));
@@ -250,16 +256,28 @@ namespace TianParameterModelForOpt
             else
             {
                 Rhino.RhinoApp.WriteLine("两条原始线不相交。");
+                curveWithIntersection1 = new Dictionary<Curve, List<Point3d>>();
+                curveWithIntersection2 = new Dictionary<Curve, List<Point3d>>();
+                return false;
+
+
+                //return false;
             }
 
             // 建立原始线1与intersection的关系字典
             curveWithIntersection1 = new Dictionary<Curve, List<Point3d>>();
-            curveWithIntersection1.Add(originCurve1, insideIntersection);   
+            curveWithIntersection1[originCurve1] = new List<Point3d>();
+            curveWithIntersection1[originCurve1].AddRange(insideIntersection);
+            //curveWithIntersection1[originCurve1] = insideIntersection;
+            //curveWithIntersection1.Add(originCurve1, insideIntersection);   
             curveWithIntersection1.Values.First().AddRange(outsideIntersection);
 
             // 建立原始线2与intersection的关系字典
             curveWithIntersection2 = new Dictionary<Curve, List<Point3d>>();
-            curveWithIntersection2.Add(originCurve2, insideIntersection);
+            curveWithIntersection2[originCurve2] = new List<Point3d>();
+            curveWithIntersection2[originCurve2].AddRange(insideIntersection);
+            //curveWithIntersection2[originCurve2] = insideIntersection;
+            //curveWithIntersection2.Add(originCurve2, insideIntersection);
             curveWithIntersection2.Values.First().AddRange(outsideIntersection);
 
             // 传回两条线是否有交点的信息
@@ -267,7 +285,7 @@ namespace TianParameterModelForOpt
         }
 
 
-        /// 更小的函数
+        /// ========================================================= 更小的函数
         /// 1. 判断两条线是否相交
         public static bool IsNeedIntersectedOrNot(Curve curve1, Curve curve2, double tolerance)
         {
@@ -280,7 +298,7 @@ namespace TianParameterModelForOpt
             //List<Point3d> intersectionPoints = new List<Point3d>();
 
             // 若原始线相交
-            if (Intersection.CurveCurve(curve1, curve2, tolerance, tolerance).Count > 0)
+            if (Rhino.Geometry.Intersect.Intersection.CurveCurve(curve1, curve2, tolerance, tolerance).Count > 0)
             {
                 // 而且两条原始线不是同一条线
                 if (curve1.Equals(curve2) != true)
@@ -331,13 +349,17 @@ namespace TianParameterModelForOpt
             {
                 intersection = curveCurveIntersection[0].PointA;
                 // 如果相交，则检查交点是否在给定曲线内,在的话就是它了
-                if (landcurve.Contains(intersection, Rhino.Geometry.Plane.WorldXY, tolerance) == PointContainment.Inside)
+                if (landcurve.Contains(intersection, Rhino.Geometry.Plane.WorldXY, tolerance) != PointContainment.Outside)
                 {
                     resultList.Add(intersection);
                     // 输出交点
                     return resultList;
                 }
                 // 判断 line1 和 line2 是否相交
+                else
+                {
+                    // 不做任何事情
+                }
             }
 
             // 2.如果curve本身没有交点，但是Line之间有交点，则得求Line的交点

@@ -59,8 +59,8 @@ namespace TianParameterModelForOpt
         public List<string> boundageDirections;
         public bool boundageOrNot;
 
-        // 这个land中属于boundage的方向
-        public List<string> boundageDirectionsInLand;
+        //// 这个land中属于boundage的方向
+        //public List<string> boundageDirectionsInLand;
 
         // 炸开后的land边缘集合，以及land中每个边缘的长度
         public Dictionary<string, List<Curve>> fourDirectionsEdges;
@@ -74,6 +74,9 @@ namespace TianParameterModelForOpt
         public double floorHeight;
         public double floorNum;
 
+        // ## 在land生成之处获得其生成类型，为生成build做准备
+        public List<string> buildingTypeOfThisLandCurve { get; set; }
+
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
         public Land (/*List<Curve> baseCurves, */ Curve unoffsetedBaseCurve, Curve landCurve, /*List<Curve> lands,*/
         double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing,
@@ -83,7 +86,7 @@ namespace TianParameterModelForOpt
             //this.baseCurve = baseCurve;
             //this.lands = lands;
             this.landCurve = landCurve;
-            this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0]; ;
+            this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0];
             this.roomDepth = roomDepth;
             this.roomWidth = roomWidth;
             this.corridorWidth = corridorWidth;
@@ -97,7 +100,7 @@ namespace TianParameterModelForOpt
 
 
             this.buildingLandSpacing = buildingSpacing / 2;
-            this.isABoundageLand = IsABoundageLand(landCurve, this.baseCurve, out Dictionary<string, List<Curve>> onBoundage, out Dictionary<string, List<Curve>> notOnBoundage, out boundageDirectionsInLand);
+            this.isABoundageLand = IsABoundageLand(landCurve, this.baseCurve, out onBoundage, out notOnBoundage, out boundageDirections);
             
             this.isWestOrEast = IsWestOrEast(zoneWestEast, landCurve);
             this.isNorthOrSouth = IsNorthOrSouth(zoneNorthSouth, landCurve);
@@ -106,6 +109,12 @@ namespace TianParameterModelForOpt
 
             this.directionAndLength = GetLengthsAndLandlines(landCurve, out fourDirectionsEdges);
 
+            this.buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(boundageDirections, directionAndLength, isWestOrEast, isNorthOrSouth, 
+                GetShortestEndDepth(),
+                GetShortestBLength(),
+                GetShortestLLength(),
+                GetShortestULength(),
+                GetShortestOLength());
             //this.westOrEast = IsWestOrEast(zones, landCurve);
             //this.northOrSouth = IsNorthOrSouth(zones, landCurve);
         }
@@ -242,7 +251,7 @@ namespace TianParameterModelForOpt
             return buildingDepth;
         }
 
-        public double GetShortestEndDepth()
+        public double GetShortestEndDepth(/*bool isABoundageLand*/)
         {
             double shortestEndDepth = 1.0;
             if (this.isABoundageLand == true)
@@ -279,9 +288,9 @@ namespace TianParameterModelForOpt
                 buildingInterval = 13;
 
             if(this.isABoundageLand == true)
-                return buildingInterval + 2*roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
+                return buildingInterval + (2 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
             else
-                return buildingInterval + 2 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2*buildingSpacing;
+                return buildingInterval + (2 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2*buildingSpacing;
         }
 
         public double GetShortestOLength()
@@ -400,10 +409,10 @@ namespace TianParameterModelForOpt
 
             foreach (Curve landLine in landCurves)
             {
-                northAngles.Add(Math.Round(Vector3d.VectorAngle(directionLines[0].Direction, landLine.TangentAtStart), 2));
-                southAngles.Add(Math.Round(Vector3d.VectorAngle(directionLines[1].Direction, landLine.TangentAtStart), 2));
-                eastAngles.Add(Math.Round(Vector3d.VectorAngle(directionLines[2].Direction, landLine.TangentAtStart), 2));
-                westAngles.Add(Math.Round(Vector3d.VectorAngle(directionLines[3].Direction, landLine.TangentAtStart), 2));
+                northAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[0].Direction, landLine.TangentAtStart), 2) /Math.PI);
+                southAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[1].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                eastAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[2].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                westAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[3].Direction, landLine.TangentAtStart), 2) / Math.PI);
             }
 
             // 计算每条边缘线与方向点之间的距离
@@ -459,6 +468,7 @@ namespace TianParameterModelForOpt
 
                 return relationshipDicFour;
             }
+
             else if (edgeCount > 4)
             {
                 int maxLength = (int)Math.Round(maxEdgeLength);
@@ -1020,90 +1030,6 @@ namespace TianParameterModelForOpt
 
         /*------------------------------------绿化率---------------------------------------------------*        
 
-        /*----------------------------------------进行偏移，形成图形------------------------------------------*/
-
-        //public List<Curve> EdgeProcessor(Curve edge, string direction, string condition = "edge", List<Curve> boundings = null)
-        //{
-
-        //    // 储存偏移后的边缘
-        //    List<Curve> spliters = new List<Curve>();
-
-        //    /*  ------------------------------------------------ EDGE --------------------------------------------------------*/
-
-        //    if (condition == "edge") // edge，普通非boundage边缘，偏移两次，形成体块的主体
-        //    {
-        //        double buildingDepth = GetBuildingDepth();
-        //        //// 第一次，偏移spacing的一半
-        //        //Curve outsideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingLandSpacing, land);
-
-        //        //// 第二次，偏移房屋深度
-        //        //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
-
-        //        //spliters.Add(outsideSpliters);
-        //        //spliters.Add(insideSpliters);
-
-        //        spliters.AddRange(Offset.offsetSideCurve(edge, buildingLandSpacing, buildingDepth, land));
-
-        //    }
-        //    /*--------------------------------------------- Boundage ------------------------------------------------------*/
-
-        //    else if (condition == "boundage") // boundage，boundage边缘，偏移一次，第一次与边缘重合，第二次便宜建筑深度，形成体块的主体
-        //    {
-        //        double buildingDepth = GetBuildingDepth();
-        //        //// 第一次，不偏移
-        //        //Curve outsideSpliters = edge;
-
-        //        //// 第二次，偏移房屋深度
-        //        //Curve insideSpliters = MyMethods.OffsetTowardsRightDirection(edge, buildingDepth, land);
-
-        //        //！ 可能有BUG（offset为0）
-        //        spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
-
-        //    }
-
-        //    /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
-
-        //    else if (condition == "end_boundage" ) // boundage，boundage边缘，不偏移，与边缘重合
-        //    {
-        //        // 不偏移
-        //        spliters.Add(edge);
-        //    }
-
-        //*----------------------------------------------END BOUNDING-------------------------------------------------*/
-
-        //    // ? 想不起来了，暂时搁置
-
-        //    //else if (condition == "end_bounding")
-        //    //{
-        //    //    // 处理边缘在边界末端且边界将被用作末端
-        //    //    if (land != null)
-        //    //    {
-        //    //        List<Curve> boundingLinesDirections = CreateBoundingLinesDirections(land);
-        //    //        Curve outsideSpliters = boundingLinesDirections[direction] as Curve;
-        //    //        Curve[] insideSpliters = outsideSpliters.Offset(directionPt[0], spacing, RhinoMath.ZeroTolerance, CurveOffsetCornerStyle.Sharp);
-
-        //    //        spliters.Add(insideSpliters[0]);
-        //    //    }
-        //    //}
-
-        //    /*----------------------------------------------END SPACING-------------------------------------------------*/
-
-        //    else if (condition == "end_spacing") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
-        //    {
-        //        spliters.AddRange(Offset.offsetEndCurve(edge, buildingLandSpacing));
-        //    }
-
-        //    /*----------------------------------------------END SELF SPACING-------------------------------------------------*/
-
-        //    else if (condition == "end_selfspacing")// end_self_spacing，偏移2次但是只偏移一个spacing的距离，功能忘记，先定义出来
-        //    {
-        //        double buildingDepth = GetBuildingDepth();
-
-        //        spliters.AddRange(Offset.offsetSideCurve(edge, 0, buildingDepth, land));
-        //    }
-
-        //    return spliters;
-        //}
 
         /*-------------------------------------------------附属方法-------------------------------------------------*/
 

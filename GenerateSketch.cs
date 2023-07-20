@@ -20,24 +20,41 @@ namespace TianParameterModelForOpt
         /// <param name="distance"> </param>
         /// <param name="land"></param>
         /// <returns></returns>
-        public static Curve DrawSingleBlockSketch(List<Point3d> pts/*, double distance, Curve land*/)
+        public static Curve DrawSingleBlockSketch(List<Point3d> pts, bool isEndOrNot = false/*, double distance, Curve land*/)
         {
-            double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
-
-            // 若list不为空，则对于列表进行排序，并连成polyline
-            if (pts.Count != 0)
-            {
-                Point3d[] ptsSort = Point3d.SortAndCullPointList(pts, absulatTolerance);
-
-                Polyline polyline = new Polyline(ptsSort);
-                if (polyline.IsClosed == false)
-                {
-                    polyline.Add(polyline[0]);
-                }
-                return polyline.ToNurbsCurve();
-            }
-            else
+            // 如果这个草图是end草图的话，那么其不参与画block
+            // return一个null来进行站位
+            if (isEndOrNot == true)
                 return null;
+
+            else
+            {
+                double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
+
+                // 若list不为空，则对于列表进行排序，并连成polyline
+                if (pts.Count != 0)
+                {
+                    Point3d[] ptsSort = Point3d.SortAndCullPointList(pts, absulatTolerance);
+                    if (ptsSort.Count() != 1)
+                    {
+                        Polyline polyline = new Polyline(ptsSort);
+                        if (polyline.IsClosed == false)
+                        {
+                            polyline.Add(polyline[0]);
+                        }
+                        return polyline.ToNurbsCurve();
+                    }
+
+                    else
+                    {
+                        return null;
+                    }
+
+                }
+                else
+                    return null;
+            }
+
 
         }
 
@@ -71,6 +88,7 @@ namespace TianParameterModelForOpt
             // 对列表中的第一个Curve进行初始化
             Curve unionCurve = single_blocks[0];
 
+
             // 对列表中的所有Curve进行布尔并集操作
             for (int i = 1; i < single_blocks.Count; i++)
             {
@@ -99,6 +117,7 @@ namespace TianParameterModelForOpt
                             }
                         }
                     }
+
                     unionCurve = result[maxAreaIndex];
 
                 }

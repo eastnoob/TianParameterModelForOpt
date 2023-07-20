@@ -5,6 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Net;
+using System.Collections;
+//using MoreLinq;
 
 
 namespace TianParameterModelForOpt
@@ -47,15 +50,54 @@ namespace TianParameterModelForOpt
                 // 将boundageDirections所有元素加入initialCondition
                 initialCondition.AddRange(boundageDirections);
             }
+            else
+            {
+                // 如果其为空，则证明其不是一个boundage的land，不用添加什么
+            }
+
+
 
             // 继续判断方向
             // 优先级A，判断directionAndLengths哪一方向的边最长，其就带有这个方向
 
-            // 将directionAndLengths按照value从大到小排序
-            var sortedDirections = directionAndLengths.OrderByDescending(x => x.Value).Select(x => x.Key);
+            // 找到directionAndLengths的最大值
+            List<string> maxStrList = new List<string>();
+            double maxVal = double.MinValue;
+
+            foreach (KeyValuePair<string, double> entry in directionAndLengths)
+            {
+                if (entry.Value > maxVal)
+                {
+                    maxVal = entry.Value;
+                    maxStrList.Clear();
+                    maxStrList.Add(entry.Key);
+                }
+                else if (entry.Value == maxVal)
+                {
+                    maxStrList.Add(entry.Key);
+                }
+            }
 
             // 将最长的边的方向加入到initialCondition中
-            AddInToJudgeList(initialCondition, sortedDirections.First());
+            AddInToJudgeList(initialCondition, maxStrList[0]);
+
+            //if (directionAndLengths.Count > 0)
+            //{
+            //    var maxKey = directionAndLengths.MaxBy(x => x.Value).Select(x => x.Key).ToList();
+
+            //    // 将最长的边的方向加入到initialCondition中
+            //    if (maxKey.Any())
+            //    {
+            //        AddInToJudgeList(initialCondition, maxKey.First());
+            //    }
+            //}
+
+            //directionAndLengths.maxva
+
+            //var longestDirection = directionAndLengths.OrderByDescending(x => x.Value).First().Key;
+
+            // 将最长的边的方向加入到initialCondition中
+            //AddInToJudgeList(initialCondition, longestDirection);
             //initialCondition.Add(sortedDirections.First());
 
             // 优先级b：在哪个方向区域里
@@ -63,16 +105,16 @@ namespace TianParameterModelForOpt
             AddInToJudgeList(initialCondition, ns);
 
             // -------------------------------------------再判断形态------------------------------------------------------------------
-            // 如果最短边没过了shortestLandDepth, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
+            // 如果最短边没过shortestLandDepth, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
             if (directionAndLengths.Min(x => x.Value) < shortestLandDepth)
             {
+                Console.WriteLine("地块不能生成");
                 initialCondition.Add("NO");
                 return initialCondition;
             }
             // 如果最短边超过了shortestLandLength, 将继续判断
-            else if (directionAndLengths.Min(x => x.Value) > shortestBLength)
+            else
             {
-                
 
                 // 如果最长边没过了shortestLandLength, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
                 if (directionAndLengths.Max(x => x.Value) < shortestBLength)
@@ -169,7 +211,7 @@ namespace TianParameterModelForOpt
 
             /*------------------------------先根据condition判断四边的行为------------------------------------*/
 
-            foreach (string direction in edgeProcessCondition.Keys)
+            foreach (string direction in edgeProcessCondition.Keys.ToList())
             {
                 //Curve emptyCurve = new Polyline().ToNurbsCurve();
                 //emptyCurve.UserData.Add("Identifier", 1);
@@ -215,13 +257,29 @@ namespace TianParameterModelForOpt
 
             if (judgeList.Contains(judgeCondition) == false)
             {
-                judgeList.Add(judgeCondition);
+                //judgeList.Add(judgeCondition);
                 // 同样不允许相反的方向同时存在
-                if (!judgeList.Contains(reverseDirection[judgeCondition]))
+                // 以及，遇到U或者O形的时候，不允许存在其他的形态判断
+                try
                 {
-                    //judgeList.Remove(judgeCondition);
-                    judgeList.Add(judgeCondition);
+                    if (!judgeList.Contains(reverseDirection[judgeCondition]))
+                    {
+                        //judgeList.Remove(judgeCondition);
+                        judgeList.Add(judgeCondition);
+                    }
                 }
+                catch (System.Collections.Generic.KeyNotFoundException)
+                {
+                    List<string> conditionList = new List<string>() { "L", "U", "O", "B" };
+
+                    if (!judgeList.Contains(judgeCondition) && conditionList.Where(x => x != judgeCondition).All(x => !judgeList.Contains(x)))
+                    {
+                        //if (conditionList.Contains(judgeCondition) && conditionList.Where(x => x != judgeCondition).All(x => !judgeList.Contains(x)))
+                            judgeList.Add(judgeCondition);
+                    }
+                    //throw;
+                }
+
 
             }
         }

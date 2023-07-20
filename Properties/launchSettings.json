@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "TianParameterModelForOpt": {
+      "commandName": "Project"
+    },
+    "配置文件 1": {
+      "commandName": "Project"
+    },
+    "执行": {
+      "commandName": "Executable"
+    }
+  }
+}
