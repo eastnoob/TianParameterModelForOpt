@@ -30,8 +30,8 @@ namespace TianParameterModelForOpt
         /// <param name="shortestOLength"> 生成O的最短长</param>
         /// <returns>传回一个装满字符串的List，内部的字符串标记了建筑类型</returns>
 
-        public static List<string> DetermineBuildingTypeOfTheLand(List<string> boundageDirections, 
-                                                        Dictionary<string, double> directionAndLengths, 
+        public static List<string> DetermineBuildingTypeOfTheLand(List<string> boundageDirections,
+                                                        Dictionary<string, double> directionAndLengths,
                                                         string ew, string ns,
                                                         double shortestLandDepth,
                                                         double shortestBLength,
@@ -39,72 +39,15 @@ namespace TianParameterModelForOpt
                                                         double shortestULength,
                                                         double shortestOLength)
         {
+
+            string buildingType = null;
+
+
             List<string> initialCondition = new List<string>();
 
-            // -------------------------------------------先判断方向------------------------------------------------------------------
 
-            // 如果boundageDirections是空的，就不用判断boundage了
-            // 否则则将方向全部加入到initialCondition中
-            if (boundageDirections.Count != 0)
-            {
-                // 将boundageDirections所有元素加入initialCondition
-                initialCondition.AddRange(boundageDirections);
-            }
-            else
-            {
-                // 如果其为空，则证明其不是一个boundage的land，不用添加什么
-            }
+            // ------------------------------------------- 先判断形态 ---------------------------------------------------------------
 
-
-
-            // 继续判断方向
-            // 优先级A，判断directionAndLengths哪一方向的边最长，其就带有这个方向
-
-            // 找到directionAndLengths的最大值
-            List<string> maxStrList = new List<string>();
-            double maxVal = double.MinValue;
-
-            foreach (KeyValuePair<string, double> entry in directionAndLengths)
-            {
-                if (entry.Value > maxVal)
-                {
-                    maxVal = entry.Value;
-                    maxStrList.Clear();
-                    maxStrList.Add(entry.Key);
-                }
-                else if (entry.Value == maxVal)
-                {
-                    maxStrList.Add(entry.Key);
-                }
-            }
-
-            // 将最长的边的方向加入到initialCondition中
-            AddInToJudgeList(initialCondition, maxStrList[0]);
-
-            //if (directionAndLengths.Count > 0)
-            //{
-            //    var maxKey = directionAndLengths.MaxBy(x => x.Value).Select(x => x.Key).ToList();
-
-            //    // 将最长的边的方向加入到initialCondition中
-            //    if (maxKey.Any())
-            //    {
-            //        AddInToJudgeList(initialCondition, maxKey.First());
-            //    }
-            //}
-
-            //directionAndLengths.maxva
-
-            //var longestDirection = directionAndLengths.OrderByDescending(x => x.Value).First().Key;
-
-            // 将最长的边的方向加入到initialCondition中
-            //AddInToJudgeList(initialCondition, longestDirection);
-            //initialCondition.Add(sortedDirections.First());
-
-            // 优先级b：在哪个方向区域里
-            AddInToJudgeList(initialCondition, ew);
-            AddInToJudgeList(initialCondition, ns);
-
-            // -------------------------------------------再判断形态------------------------------------------------------------------
             // 如果最短边没过shortestLandDepth, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
             if (directionAndLengths.Min(x => x.Value) < shortestLandDepth)
             {
@@ -126,23 +69,26 @@ namespace TianParameterModelForOpt
                 else
                 {
                     // TODO 记录日志：地块可以生成
-                    
+
                     // 如果此时最短边超过了shortestLandLength, 但是没超过shortestLLength, 
                     if (directionAndLengths.Min(x => x.Value) < shortestLLength)
                     {
                         // 如果最长边不足以构成L，则将"B"加入到initialCondition中
                         if (directionAndLengths.Max(x => x.Value) < shortestLLength)
-                            AddInToJudgeList(initialCondition, "B");
+                            buildingType = "B";
+                        //AddInToJudgeList(initialCondition, "B");
                         // 如果最长边足以构成L
                         else if (directionAndLengths.Max(x => x.Value) >= shortestLLength)
                         {
                             // 且足以构成U，则将"U"加入到initialCondition中
                             if (directionAndLengths.Max(x => x.Value) >= shortestULength)
-                                AddInToJudgeList(initialCondition, "U");
+                                buildingType = "U";
+                            //AddInToJudgeList(initialCondition, "U");
 
                             // 否则将"L"加入到initialCondition中
                             else
-                                AddInToJudgeList(initialCondition, "L");
+                                buildingType = "L";
+                            //AddInToJudgeList(initialCondition, "L");
                         }
                     }
 
@@ -154,20 +100,26 @@ namespace TianParameterModelForOpt
                         {
                             // 如果最长边已经超过了L，但是没超过U，则将"L"加入到initialCondition中
                             if (directionAndLengths.Max(x => x.Value) < shortestULength)
-                                AddInToJudgeList(initialCondition, "L");
+                                //AddInToJudgeList(initialCondition, "L");
+                                buildingType = "L";
+
                             // 否则为U
                             else
-                                AddInToJudgeList(initialCondition, "U");
+                                //AddInToJudgeList(initialCondition, "U");
+                                buildingType = "U";
                         }
 
                         // 如果此时最短边超过了U是，
-                        else if(directionAndLengths.Min(x => x.Value) >= shortestULength)
+                        else if (directionAndLengths.Min(x => x.Value) >= shortestULength)
                         {
                             // 但还没到O
                             if (directionAndLengths.Min(x => x.Value) < shortestOLength)
-                                AddInToJudgeList(initialCondition, "U");
+                                //AddInToJudgeList(initialCondition, "U");
+                                buildingType = "U";
+
                             else
-                                AddInToJudgeList(initialCondition, "O");
+                                //AddInToJudgeList(initialCondition, "O");
+                                buildingType = "O";
 
                             //if (directionAndLengths.Max(x => x.Value) < shortestOLength)
                             //    AddInToJudgeList(initialCondition, "U");
@@ -177,12 +129,201 @@ namespace TianParameterModelForOpt
 
                         else
                         {
-                            AddInToJudgeList(initialCondition, "B");
+                            //AddInToJudgeList(initialCondition, "B");
+                            buildingType = "B";
                         }
                     }
                 }
-            
+
             }
+
+            // --------------------------------------------- 再判断方向---------------------------------------------------
+
+
+            // 如果boundageDirections是空的，就不用判断boundage了
+            // 否则则将方向全部加入到initialCondition中
+
+            Dictionary<string, int> directionWithScore = new Dictionary<string, int>{
+                {"north", 0 },
+                {"south", 0 },
+                {"east", 0 },
+                {"west", 0 }
+            }; 
+
+            if (boundageDirections.Count != 0)
+            {
+                foreach (var direction in boundageDirections)
+                    directionWithScore[direction] += 1;
+                // 将boundageDirections所有元素加入initialCondition
+                initialCondition.AddRange(boundageDirections);
+            }
+            else
+            {
+                // 如果其为空，则证明其不是一个boundage的land，不用添加什么
+            }
+
+            //List<string>temporaryDirectionContainer = new List<string>();
+
+            // 继续判断方向
+
+            // 优先级B，判断directionAndLengths哪一方向的边最长，其就带有这个方向
+            // 找到directionAndLengths的最大值
+            List<string> maxStrList = new List<string>();
+            double maxVal = double.MinValue;
+
+            foreach (KeyValuePair<string, double> entry in directionAndLengths)
+            {
+                if (entry.Value > maxVal)
+                {
+                    maxVal = entry.Value;
+                    maxStrList.Clear();
+                    //AddInToJudgeList(initialCondition, entry.Key);
+                    
+                    maxStrList.Add(entry.Key);
+                }
+                else if (entry.Value == maxVal)
+                {
+                    //AddInToJudgeList(initialCondition, entry.Key);
+                    maxStrList.Add(entry.Key);
+                }
+            }
+            AddInToJudgeList(initialCondition, maxStrList[0]);
+            directionWithScore[maxStrList[0]] += 1;
+
+
+
+            // 优先级A：在哪个方向区域里
+            AddInToJudgeList(initialCondition, ew);
+            directionWithScore[ew] += 1;
+
+            AddInToJudgeList(initialCondition, ns);
+            directionWithScore[ns] += 1;
+
+
+            // -------------------------- 检查与纠错 ---------------------------------
+            Dictionary<string, int> typeWithItsNeedOffsetEdgeCount = new Dictionary<string, int>
+            {
+                {"B", 0 },
+                {"L", 2 },
+                {"U", 3 },
+/*                {"C", 3 }*/
+                {"O", 4 }
+            };
+
+            // 相邻边字典，四个方向是键，方向的两个临近方向组成的数组是值
+            Dictionary<string, string[]> adjacentEdges = new Dictionary<string, string[]>
+            {
+                { "north", new string[] { "west", "east" } },
+                { "east", new string[] { "north", "south" } },
+                { "south", new string[] { "east", "west" } },
+                { "west", new string[] { "south", "north" } }
+            };
+
+            // 以得分最高的那一个为基准边缘
+            string benchmark = GetTheBiggestValueOneOfTheDictionary(directionWithScore)[0];
+            if(! initialCondition.Contains(benchmark))
+                initialCondition.Add(benchmark);
+
+            // 利用形态判断
+            if (buildingType == "B")
+            {
+                List<string> bCondition = new List<string> { benchmark };
+                bCondition.Add(buildingType);
+                return bCondition;
+
+                // 对于B，其基准边的相邻边，对边都不为side
+                foreach (string otherDirection in adjacentEdges[benchmark])
+                {
+                    if (initialCondition.Contains(otherDirection))
+                    {
+                        // 将这个otherdirectio移除
+                        initialCondition.Remove(otherDirection);
+                    }
+                    // B类只需要偏移一条边
+                    if(initialCondition.Count == 1)
+                    {
+                        initialCondition.Add(buildingType);
+                        return initialCondition;
+                    }
+                }
+            }
+            else if(buildingType == "L")
+            {
+                // 对于L，另外有些只有一个side，而且必须是其相邻边
+                directionWithScore.Remove(benchmark);
+                List<string> secondScoreDirections = GetTheBiggestValueOneOfTheDictionary(directionWithScore);
+
+                foreach (string direction in adjacentEdges[benchmark])
+                {
+                    if (secondScoreDirections.Contains(direction) || ! initialCondition.Contains(direction))
+                    {
+                        AddInToJudgeList(initialCondition, direction);
+                    }
+                    if (initialCondition.Count == 2)
+                    {
+                        initialCondition.Add(buildingType);
+                        return initialCondition;
+                    }
+                        
+
+                    else if (initialCondition.Count > 2)
+                    {
+                        // 如果超了2个，就剔除得分最低的那一个
+                        Dictionary<string, int> findTheMin = new Dictionary<string, int>();
+                        foreach(string directionOfSecond in initialCondition)
+                        {
+                            findTheMin.Add(directionOfSecond, directionWithScore[directionOfSecond]);
+                        }
+                        var minOne = GetTheBiggestValueOneOfTheDictionary(findTheMin, false)[0];
+                        initialCondition.Remove(minOne);
+                    }
+                }
+                initialCondition.Add(buildingType);
+                return initialCondition;
+
+            }
+            else if(buildingType == "U")
+            {
+                // 对于u，其相邻两边必须是side
+                foreach(string direction in adjacentEdges[benchmark])
+                {
+                    if (!initialCondition.Contains(direction))
+                        //initialCondition.Add(direction);
+                        AddInToJudgeList(initialCondition, direction, itsU: true);
+
+                    if (initialCondition.Count == 3)
+                    {
+                        initialCondition.Add(buildingType);
+                        return initialCondition;
+                    }    
+                }
+                if (initialCondition.Count == 3)
+                {
+                    AddInToJudgeList(initialCondition, buildingType, itsU: true);
+                    //initialCondition.Add(buildingType);
+                    return initialCondition;
+                }
+
+            }
+            else if (buildingType == "O")
+            {
+                // 对于u，无脑全加进去就行了
+                if(initialCondition.Count != 4)
+                {
+                    foreach(var direction in adjacentEdges.Keys)
+                    {
+                        AddInToJudgeList(initialCondition, direction, true);
+                    }
+
+                    if(initialCondition.Count == 4)
+                    {
+                        initialCondition.Add(buildingType);
+                        return initialCondition;
+                    }
+                    
+                }
+            }
+            initialCondition.Add(buildingType);
             return initialCondition;
         }
 
@@ -235,6 +376,9 @@ namespace TianParameterModelForOpt
                     edgeProcessCondition[direction] += "-boundage";
             }
 
+
+
+
             return edgeProcessCondition;
 
         }
@@ -244,8 +388,9 @@ namespace TianParameterModelForOpt
         /// </summary>
         /// <param name="judgeList"></param>
         /// <param name="judgeCondition"></param>
-        public static void AddInToJudgeList(List<string> judgeList, string judgeCondition)
+        public static void AddInToJudgeList(List<string> judgeList, string judgeCondition, bool itsO = false, bool itsU = false)
         {
+
             //相反方向字典，如north对south，east对west
             Dictionary<string, string> reverseDirection = new Dictionary<string, string>()
             {
@@ -255,7 +400,28 @@ namespace TianParameterModelForOpt
                 {"west", "east"}
             };
 
-            if (judgeList.Contains(judgeCondition) == false)
+            // 如果传入的是O形，直接无脑加进去
+            if (itsO == true)
+            {
+                foreach (string direction in reverseDirection.Keys) 
+                { 
+                    if (!judgeList.Contains(direction))
+                        judgeList.Add(direction);
+                }
+            }
+
+            // 如果是U，则无视反向规则，但是不能超过三个
+            else if (itsU == true)
+            {
+                judgeList.Add(judgeCondition);
+                if (judgeList.Count > 3)
+                {
+                    judgeList.RemoveAt(judgeList.Count-1);
+                    //return;
+                }
+            }   
+
+            else if (judgeList.Contains(judgeCondition) == false)
             {
                 //judgeList.Add(judgeCondition);
                 // 同样不允许相反的方向同时存在
@@ -279,8 +445,56 @@ namespace TianParameterModelForOpt
                     }
                     //throw;
                 }
+            }
+        }
 
+        public static List<string> GetTheBiggestValueOneOfTheDictionary(Dictionary<string, int> directionAndLengths, bool isUsedForMax = true)
+        {
+            if (isUsedForMax == true)
+            {
+                List<string> maxStrList = new List<string>();
+                double maxVal = double.MinValue;
 
+                foreach (KeyValuePair<string, int> entry in directionAndLengths)
+                {
+                    if (entry.Value > maxVal)
+                    {
+                        maxVal = entry.Value;
+                        maxStrList.Clear();
+                        //AddInToJudgeList(initialCondition, entry.Key);
+
+                        maxStrList.Add(entry.Key);
+                    }
+                    else if (entry.Value == maxVal)
+                    {
+                        //AddInToJudgeList(initialCondition, entry.Key);
+                        maxStrList.Add(entry.Key);
+                    }
+                }
+                return maxStrList;
+            }
+            else
+            {
+                List<string> minStrList = new List<string>();
+                double minVal = double.MaxValue;
+
+                foreach (KeyValuePair<string, int> entry in directionAndLengths)
+                {
+                    if (entry.Value < minVal)
+                    {
+                        minVal = entry.Value;
+                        minStrList.Clear();
+                        //AddInToJudgeList(initialCondition, entry.Key);
+
+                        minStrList.Add(entry.Key);
+                    }
+                    else if (entry.Value == minVal)
+                    {
+                        //AddInToJudgeList(initialCondition, entry.Key);
+                        minStrList.Add(entry.Key);
+                    }
+                }
+                return minStrList;
             }
         }
 

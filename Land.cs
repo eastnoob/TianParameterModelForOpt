@@ -78,7 +78,7 @@ namespace TianParameterModelForOpt
         public List<string> buildingTypeOfThisLandCurve { get; set; }
 
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
-        public Land (/*List<Curve> baseCurves, */ Curve unoffsetedBaseCurve, Curve landCurve, /*List<Curve> lands,*/
+        public Land (/*List<Curve> baseCurves, */ Curve setBackCurve, Curve landCurve, /*List<Curve> lands,*/
         double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing,
             List<Curve> zoneWestEast, List<Curve> zoneNorthSouth)
         {
@@ -86,7 +86,8 @@ namespace TianParameterModelForOpt
             //this.baseCurve = baseCurve;
             //this.lands = lands;
             this.landCurve = landCurve;
-            this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0];
+            this.baseCurve = setBackCurve;
+            //this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0];
             this.roomDepth = roomDepth;
             this.roomWidth = roomWidth;
             this.corridorWidth = corridorWidth;
@@ -212,6 +213,7 @@ namespace TianParameterModelForOpt
 
             // 获得四个方向各自所有的curve的长度之和，分别存放于一个字典中，键为方向，值为长度
             Dictionary<string, double> directionAndLengths = new Dictionary<string, double>();
+
             foreach (var direction in fourDirectionsEdges.Keys)
             {
                 double length = 0;
@@ -996,10 +998,11 @@ namespace TianParameterModelForOpt
                     //Point3d midPoint = edge.PointAtNormalizedLength(0.5);
                     //Circle circle = new Circle(midPoint, 0.1);
 
+
                     // 新方法，求取edge的中点并判断是否在base上
                     Point3d midPoint = edge.PointAtNormalizedLength(0.5);
                         
-                    if (baseIsTheBoundage.Contains(midPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside)
+                    if (baseIsTheBoundage.Contains(midPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
                     {
                         //if (!directionHaveBeenProcessed.Contains(direction))
                         //{

@@ -90,7 +90,8 @@ namespace TianParameterModelForOpt
         /// <returns></returns>
         public static Point3d GetDirections(Curve curve, Curve land)
         {
-
+            Point3d centriodOfLand = land.GetBoundingBox(true).Center;
+            return centriodOfLand;
             // 旋转复制curve，创建在需要平面上垂直于曲线curve的verticalLine
             Curve verticalLine = curve.DuplicateCurve();
             verticalLine.Rotate(90, Vector3d.ZAxis, curve.PointAtStart);

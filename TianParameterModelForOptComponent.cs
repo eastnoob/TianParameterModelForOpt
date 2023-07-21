@@ -1,9 +1,13 @@
+using Eto.Forms;
 using Grasshopper;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Special.SketchElements;
+using Grasshopper.Kernel.Types;
 using Rhino.Geometry;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TianParameterModelForOpt
 {
@@ -71,9 +75,9 @@ namespace TianParameterModelForOpt
             //-----------------------------------------------------------------------------------------------------
 
             // allGreenLand，列表曲面，表达所有的绿地
-            pManager.AddSurfaceParameter("AllGreenLand", "G", "AllGreenLand", GH_ParamAccess.list);
+            pManager.AddBrepParameter("AllGreenLand", "G", "AllGreenLand", GH_ParamAccess.list);
             //allBuildings, 列表brep，表达所有的建筑
-            pManager.AddBrepParameter("AllBuildings", "B", "AllBuildings", GH_ParamAccess.list);
+            pManager.AddBrepParameter("AllBuildings", "B", "AllBuildings", GH_ParamAccess.tree);
 
             //// allGroundFloorsPaths，列表向量，表达所有首层平面的法向量，定义了挤出方向
             //pManager.AddVectorParameter("AllGroundFloorsPaths", "G", "AllGroundFloorsPaths", GH_ParamAccess.list);
@@ -84,6 +88,15 @@ namespace TianParameterModelForOpt
             //// allOthersFloors，列表曲面，表达所有非首层平面
             //pManager.AddSurfaceParameter("AllOthersFloors", "O", "AllOthersFloors", GH_ParamAccess.list);
 
+            // ------------------------------ 以下是临时变量，用于传出向量与曲面，以便于在Rhino中二次生成 --------------------------------
+
+            pManager.AddTextParameter("---- Temporary ----", "---- T ----", "Temporary items, which are floors and vectors", GH_ParamAccess.item);
+            // allFloors，列表曲线，表达建筑的所有的平面
+            pManager.AddCurveParameter(Name = "AllFloors", NickName = "AF", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
+            // allFloorsPath, 列表向量，表达建筑的所有的平面的法向量
+            pManager.AddVectorParameter(Name = "AllFloorsPath", NickName = "AFP", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
+
+            pManager.AddCurveParameter(Name = "SingleBlocks", NickName = "SB", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
             //-----------------------------------------------------------------------------------------------------
 
             // --- Economic indicators ---，用于标识下方的节点为经济指标，无实际意义
@@ -166,11 +179,16 @@ namespace TianParameterModelForOpt
             //double buildingDensity = 0;
             int roomNum = 0;
 
+            /*------------------------------------ 临时变量 -------------------------------------*/
+
+            List<Curve> allFloorsPlanes = new List<Curve>();
+            List<Vector3d> allFloorsPaths = new List<Vector3d>();
+
             /*--------------------------------------------------图形--------------------------------------------------------*/
 
             // 用于测试
             List<Curve> sketchs = new List<Curve>();
-
+            List<Curve> singleBlocks = new List<Curve>();
             //floorNum = new List<int>() { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
             // 函数执行
@@ -210,11 +228,16 @@ namespace TianParameterModelForOpt
                     // 绿地面积(单个)
                     totalGreenLandArea += greenLand.greenLandArea;
 
+                    // ---------------------临时变量---------------------
+                    allFloorsPlanes.Add(null);
                 }
                 else
                 {
                     // 初始化building
                     Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
+
+                    // ------------------------临时变量------------------------
+                    singleBlocks.AddRange(thisBuilding.singleBlocks);
 
                     // 装载保存
                     allBuildings.Add(thisBuilding.buildingBrep);
@@ -238,6 +261,10 @@ namespace TianParameterModelForOpt
 
                     // 房间数量（单个）
                     roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+
+                    // ---------------------临时变量---------------------
+                    allFloorsPlanes.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Keys.ToList());
+                    allFloorsPaths.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Values.ToList());
                 }
 
 
@@ -257,15 +284,47 @@ namespace TianParameterModelForOpt
             double greenRatio = totalGreenLandArea / baseCurveArea;
             double buildingDensity = totalBuildingArea / offsetedBaseCurveArea;
 
+            // 转化为datatree
+            //// 创建一个空的 DataTree 对象
+            //Grasshopper.Kernel.Data.DataTree <Brep> tree = new DataTree<Brep>();
+
+            //// 遍历 allBuildings 中的每一个 Brep，将它们添加到 DataTree 中
+            //for (int i = 0; i < allBuildings.Count; i++)
+            //{
+            //    for (int j = 0; j < allBuildings[i].Count; j++)
+            //    {
+            //        // 将 Brep 添加到 DataTree 中，第一个参数是 Brep 对象，第二个参数是路径
+            //        tree.Add(allBuildings[i][j], new GH_Path(i, j));
+            //    }
+            //}
+
+            //GH_Structure<GH_Brep> ghBrepList = new GH_Structure<GH_Brep>();
+            //foreach (List<Brep> brepList in allBuildings)
+            //{
+            //    foreach (Brep brep in brepList)
+            //    {
+            //        GH_Brep ghBrep = new GH_Brep(brep);
+            //        ghBrepList.Append(ghBrep);
+            //    }
+            //}
+
 
             /*-------------------------------------------输出-------------------------------------------------------*/
 
-            DA.SetData("Building", allBuildings);
-            DA.SetData("GreenLand", allGreenLand);
+
+            //DA.SetDataList("AllBuildings", allBuildings);
+            //DA.SetData(2, ghBrepList);
+
+            DA.SetDataList("AllGreenLand", allGreenLand);
             DA.SetData("PlotRatio", plotRatio);
             DA.SetData("GreenRatio", greenRatio);
             DA.SetData("BuildingDensity", buildingDensity);
             DA.SetData("RoomNum", roomNum);
+
+            // ----------------------------------临时变量---------------------------
+            DA.SetDataList("AllFloors", allFloorsPlanes) ;
+            DA.SetDataList("AllFloorsPath", allFloorsPaths);
+            DA.SetDataList("SingleBlocks", singleBlocks);
 
         }
 
