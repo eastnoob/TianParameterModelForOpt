@@ -36,8 +36,8 @@ namespace TianParameterModelForOpt
         // 所有楼层的平面图
         public Dictionary<Curve, Vector3d> allfloorPlanesAndItsVectors;
 
-        // 是否是boundage
-        bool isBoundageOrNot;
+        //// 是否是boundage
+        //bool isBoundageOrNot;
 
         // *********** 楼层实体图形
         public List<Brep> buildingBrep;
@@ -56,10 +56,10 @@ namespace TianParameterModelForOpt
 
 
 
-            this.isBoundageOrNot = false;
+            //this.isBoundageOrNot = false;
 
             // 生成所有的楼层平面图
-            this.allfloorPlanesAndItsVectors = DrawAllFloorsOfABuilding(floorSketch, floorNum, isBoundageOrNot);
+            this.allfloorPlanesAndItsVectors = DrawAllFloorsOfABuilding(floorSketch, floorNum/*, isBoundageOrNot*/);
 
             // ********** 楼层实体图形
             this.buildingBrep = DrawBuildingFloorBlocks();
@@ -74,14 +74,29 @@ namespace TianParameterModelForOpt
         // boundage的建筑物底层挤出向量
         public Vector3d CreateBoundageBuildingGroundFloorVector(Curve sketch)
         {
-            // 先检测curve是不是平面曲线
             if (sketch.IsPlanar() == false)
                 Curve.ProjectToPlane(sketch, Plane.WorldXY);
 
+            var groundFloorHeight = this.groundFloorHeight;
+
+            // 首层不上移动
+            Point3d startingPoint = sketch.PointAtStart;
+
             Vector3d groundFloorVector = new Vector3d(0, 0, groundFloorHeight);
-            Transform transform = Transform.Translation(sketch.PointAtStart.X, sketch.PointAtStart.Y, sketch.PointAtStart.Z);
-            groundFloorVector.Transform(transform);
+
+            // Translate the vector to start at the starting point of the sketch
+            groundFloorVector.Transform(Transform.Translation(startingPoint - Point3d.Origin));
+
             return groundFloorVector;
+
+            //// 先检测curve是不是平面曲线
+            //if (sketch.IsPlanar() == false)
+            //    Curve.ProjectToPlane(sketch, Plane.WorldXY);
+
+            //Vector3d groundFloorVector = new Vector3d(0, 0, groundFloorHeight);
+            //Transform transform = Transform.Translation(sketch.PointAtStart.X, sketch.PointAtStart.Y, sketch.PointAtStart.Z);
+            //groundFloorVector.Transform(transform);
+            //return groundFloorVector;
         }
 
         // 建筑物标准层挤出向量
@@ -152,7 +167,9 @@ namespace TianParameterModelForOpt
                 // 加入字典里面
                 emptySketchWithDirection[sketchAbove] = vectorOfTheSketch;
                 //递归
-                return RecursiveReplicationCurve(sketchOfBuildingFloor: sketchAbove, floorNum: floorNum - 1, emptySketchWithDirection);
+                return RecursiveReplicationCurve(sketchOfBuildingFloor: sketchAbove, 
+                                                floorNum: floorNum - 1, 
+                                                emptySketchWithDirection);
             }
         }
 
@@ -170,13 +187,34 @@ namespace TianParameterModelForOpt
         /// <param name="duplicated">是否是复制</param>
         /// <returns>复制的各层图纸</returns>
         /// 
-        public Dictionary<Curve, Vector3d> DuplicateFloorSketchAndVector(Curve sketchOfBuildingFloor, int floorNum)
+        public Dictionary<Curve, Vector3d> DuplicateFloorSketchAndVector(Curve sketchOfStandardFloor, int floorNum)
         {
             // -----------------------新方法-----------------------
             // 这个空的字典会在递归的过程中被填满
             Dictionary<Curve, Vector3d> emptySketchWithDirection = new Dictionary<Curve, Vector3d>();
 
-            var sketchWithDirection = RecursiveReplicationCurve(sketchOfBuildingFloor, floorNum - 1, emptySketchWithDirection);
+            // 再加入首层
+            // 需要生成首层及其对应的向量
+            Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfStandardFloor);
+            emptySketchWithDirection[sketchOfStandardFloor] = vectorOfTheSketch;
+
+
+            // 递归生成其他层
+            var sketchWithDirection = RecursiveReplicationCurve(sketchOfStandardFloor, floorNum - 1, emptySketchWithDirection);
+
+
+            if (sketchWithDirection.Count == emptySketchWithDirection.Count) 
+            {
+                return sketchWithDirection;
+            }
+                
+            else
+            {
+                if (sketchWithDirection.Count > emptySketchWithDirection.Count)
+                    return sketchWithDirection;
+                else
+                    return emptySketchWithDirection;
+            }
 
             return sketchWithDirection;
 
@@ -226,34 +264,53 @@ namespace TianParameterModelForOpt
             sketchAbove.Transform(translation);
             // 加入字典里面
             sketchWithDirection[sketchAbove] = vectorOfTheSketch;
+
+            //// 将首层本身也加入字典
+            //Vector3d vectorOfGroundFloor = CreateBoundageBuildingGroundFloorVector(sketchOfGroundFloor);
+            //sketchWithDirection[sketchOfGroundFloor] = vectorOfGroundFloor;
             //递归
             return sketchWithDirection;
         }
 
-
-
-
         // ----------------------------------------------******** 生成一整个楼层的底面----------------------------------------------------------------
         /// <summary>
-        /// 生成一整个楼的所有层的底面
+        /// 生成一整个楼的所有层的底面 !!!!!!!!!!!!!!!!!!!!!!!
         /// </summary>
         /// <param name="sketchOfBuildingFloor"></param>
         /// <param name="floorNum"></param>
         /// <param name="isBoundage"></param>
         /// <returns></returns>
-        public Dictionary<Curve, Vector3d> DrawAllFloorsOfABuilding(Curve sketchOfBuildingFloor, int floorNum, bool isBoundage = false)
+        public Dictionary<Curve, Vector3d> DrawAllFloorsOfABuilding(Curve sketchOfBuildingFloor, int floorNum/*, bool isBoundage = false*/)
         {
+            bool isBoundage = this.land.boundageOrNot;
             // 容器
             Dictionary<Curve, Vector3d> allFloorsOfABuilding = new Dictionary<Curve, Vector3d>();
 
             if(isBoundage == false)
             {
                 allFloorsOfABuilding = DuplicateFloorSketchAndVector(sketchOfBuildingFloor, floorNum);
-                return allFloorsOfABuilding;
+
+                if(allFloorsOfABuilding.Count == floorNum)
+                {
+                    return allFloorsOfABuilding;
+                }
+                else
+                {
+                    // 说明有问题，要把首层本身也加入进去
+                    allFloorsOfABuilding[sketchOfBuildingFloor] = CreateStandardFloorVector(sketchOfBuildingFloor);
+                    return allFloorsOfABuilding;
+                }
+
             }
             else
             {
+                // 生成首层及其对应的向量
+                Vector3d vectorOfTheSketch = CreateBoundageBuildingGroundFloorVector(sketchOfBuildingFloor);
+                allFloorsOfABuilding[sketchOfBuildingFloor] = vectorOfTheSketch;
+
+                // 先生成首层
                 Dictionary<Curve, Vector3d> groundFloorMaterials = DuplicateFloorSketchAndVector(sketchOfBuildingFloor);
+                // 再生成其他层
                 Dictionary<Curve, Vector3d> otherFloorMaterials = DuplicateFloorSketchAndVector(groundFloorMaterials.Keys.First(), floorNum - 1);
 
 
@@ -266,8 +323,8 @@ namespace TianParameterModelForOpt
                     allFloorsOfABuilding.Add(item.Key, item.Value);
                 }
 
-                otherFloorMaterials.Add(groundFloorMaterials.Keys.First(), groundFloorMaterials.Values.First());
-                
+                //otherFloorMaterials.Add(groundFloorMaterials.Keys.First(), groundFloorMaterials.Values.First());
+
                 return allFloorsOfABuilding;
             }
         }
@@ -280,8 +337,8 @@ namespace TianParameterModelForOpt
             // 创建Extrusion
             Extrusion extrusion = Extrusion.Create(sketchOfFloor, extrudeVector.Length,true);
 
-            // 对齐方向
-            extrusion.Transform(Transform.Translation(extrudeVector));
+            //// 对齐方向
+            //extrusion.Transform(Transform.Translation(extrudeVector));
 
             // 将Extrusion对象转换成Brep对象
             Brep brep = extrusion.ToBrep(true);

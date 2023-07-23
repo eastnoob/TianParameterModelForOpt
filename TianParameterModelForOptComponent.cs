@@ -285,34 +285,32 @@ namespace TianParameterModelForOpt
             double buildingDensity = totalBuildingArea / offsetedBaseCurveArea;
 
             // 转化为datatree
-            //// 创建一个空的 DataTree 对象
-            //Grasshopper.Kernel.Data.DataTree <Brep> tree = new DataTree<Brep>();
+            var dataTree = new DataTree<Brep>();
 
-            //// 遍历 allBuildings 中的每一个 Brep，将它们添加到 DataTree 中
-            //for (int i = 0; i < allBuildings.Count; i++)
-            //{
-            //    for (int j = 0; j < allBuildings[i].Count; j++)
-            //    {
-            //        // 将 Brep 添加到 DataTree 中，第一个参数是 Brep 对象，第二个参数是路径
-            //        tree.Add(allBuildings[i][j], new GH_Path(i, j));
-            //    }
-            //}
+            if(allBuildings.Contains (null))
+            {
+                dataTree.Add(null);
+            }
+            else
+            {
+                for (int i = 0; i < allBuildings.Count; i++)
+                {
+                    for (int j = 0; j < allBuildings[i].Count; j++)
+                    {
+                        dataTree.Add(allBuildings[i][j], new GH_Path(i));
+                    }
+                }
 
-            //GH_Structure<GH_Brep> ghBrepList = new GH_Structure<GH_Brep>();
-            //foreach (List<Brep> brepList in allBuildings)
-            //{
-            //    foreach (Brep brep in brepList)
-            //    {
-            //        GH_Brep ghBrep = new GH_Brep(brep);
-            //        ghBrepList.Append(ghBrep);
-            //    }
-            //}
+            }
+
+
+            //DA.SetDataTree(0, dataTree);
 
 
             /*-------------------------------------------输出-------------------------------------------------------*/
 
 
-            //DA.SetDataList("AllBuildings", allBuildings);
+            DA.SetDataTree(2, dataTree);
             //DA.SetData(2, ghBrepList);
 
             DA.SetDataList("AllGreenLand", allGreenLand);
@@ -334,7 +332,17 @@ namespace TianParameterModelForOpt
         /// You can add image files to your project resources and access them like this:
         /// return Resources.IconForThisComponent;
         /// </summary>
-        protected override System.Drawing.Bitmap Icon => null;
+        //protected override System.Drawing.Bitmap Icon => null;
+        protected override System.Drawing.Bitmap Icon
+        {
+            get
+            {
+                // 更改这个路径到你的图标文件路径
+                return new System.Drawing.Bitmap("E:\\projects\\ParametricModelForOptimization\\TianParameterModelForOpt\\resources\\Iconarchive-Gift-Red-3-Gift.32.png");
+            }
+        }
+
+
 
         /// <summary>
         /// Each component must have a unique Guid to identify it. 

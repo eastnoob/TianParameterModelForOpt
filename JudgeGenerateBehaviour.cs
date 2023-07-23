@@ -155,7 +155,7 @@ namespace TianParameterModelForOpt
                 foreach (var direction in boundageDirections)
                     directionWithScore[direction] += 1;
                 // 将boundageDirections所有元素加入initialCondition
-                initialCondition.AddRange(boundageDirections);
+                //initialCondition.AddRange(boundageDirections);
             }
             else
             {
@@ -168,6 +168,7 @@ namespace TianParameterModelForOpt
 
             // 优先级B，判断directionAndLengths哪一方向的边最长，其就带有这个方向
             // 找到directionAndLengths的最大值
+
             List<string> maxStrList = new List<string>();
             double maxVal = double.MinValue;
 
@@ -187,20 +188,21 @@ namespace TianParameterModelForOpt
                     maxStrList.Add(entry.Key);
                 }
             }
-            AddInToJudgeList(initialCondition, maxStrList[0]);
+            //AddInToJudgeList(initialCondition, maxStrList[0]);
             directionWithScore[maxStrList[0]] += 1;
 
 
 
             // 优先级A：在哪个方向区域里
-            AddInToJudgeList(initialCondition, ew);
+            //AddInToJudgeList(initialCondition, ew);
             directionWithScore[ew] += 1;
 
-            AddInToJudgeList(initialCondition, ns);
+            //AddInToJudgeList(initialCondition, ns);
             directionWithScore[ns] += 1;
 
 
-            // -------------------------- 检查与纠错 ---------------------------------
+            // ---------------------------------------- 检查与纠错 -----------------------------------------------------
+
             Dictionary<string, int> typeWithItsNeedOffsetEdgeCount = new Dictionary<string, int>
             {
                 {"B", 0 },
@@ -219,9 +221,38 @@ namespace TianParameterModelForOpt
                 { "west", new string[] { "south", "north" } }
             };
 
-            // 以得分最高的那一个为基准边缘
-            string benchmark = GetTheBiggestValueOneOfTheDictionary(directionWithScore)[0];
-            if(! initialCondition.Contains(benchmark))
+            // 对边组字典
+            Dictionary<string, string> reverseDirection = new Dictionary<string, string>()
+            {
+                {"north", "south"},
+                {"south", "north"},
+                {"east", "west"},
+                {"west", "east"}
+            };
+
+
+            // 以得分最高的那一些为基准边缘
+            List<string> benchmarkCandidates = GetTheBiggestValueOneOfTheDictionary(directionWithScore);
+
+            // benchmark要进行判断，如果不止一个的话，那么取在reverseDirection中不成对的那一个
+            string benchmark = benchmarkCandidates[0];
+
+            if (benchmarkCandidates.Count == 1 || benchmarkCandidates.Count == 2)
+                benchmark = benchmarkCandidates[0];
+            else
+            {
+                foreach (string benchmarkCandidate in benchmarkCandidates)
+                {
+                    if(! benchmarkCandidates.Contains(reverseDirection[benchmarkCandidate]));
+                    {
+                        benchmark = benchmarkCandidate;
+                        break;
+                    }
+                }
+            }
+
+
+            if (! initialCondition.Contains(benchmark))
                 initialCondition.Add(benchmark);
 
             // 利用形态判断
@@ -249,7 +280,7 @@ namespace TianParameterModelForOpt
             }
             else if(buildingType == "L")
             {
-                // 对于L，另外有些只有一个side，而且必须是其相邻边
+                // 对于L，另外有且只有一个side，而且必须是其相邻边
                 directionWithScore.Remove(benchmark);
                 List<string> secondScoreDirections = GetTheBiggestValueOneOfTheDictionary(directionWithScore);
 

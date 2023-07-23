@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-
+using Grasshopper;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
 using Rhino.Geometry;
 
 namespace Showcase
@@ -31,7 +32,7 @@ namespace Showcase
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddCurveParameter("Output", "Output", "test out put", GH_ParamAccess.list)
+            pManager.AddPointParameter("Output", "Output", "test out put", GH_ParamAccess.tree);
         }
 
         /// <summary>
@@ -55,7 +56,17 @@ namespace Showcase
 
             List<List<Point3d>> output = new List<List<Point3d>> { pts1, pts2 };
 
-            DA.SetDataList("Output", output);
+            var dataTree = new DataTree<Point3d>();
+
+            for (int i = 0; i < output.Count; i++)
+            {
+                for (int j = 0; j < output[i].Count; j++)
+                {
+                    dataTree.Add(output[i][j], new GH_Path(i));
+                }
+            }
+
+            DA.SetDataTree(0, dataTree);
         }
 
         /// <summary>

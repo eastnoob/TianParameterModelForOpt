@@ -495,6 +495,8 @@ namespace TianParameterModelForOpt
                     KeyValuePair<Curve, List<Curve>> pair2 = curveWithOffsetedResults.ElementAt(j);
 
                     // 用于判断是否被使用过
+                    
+                    
                     bool isBeUsed = false;
 
                     int[] usedCurveIndexPair = { i, j };
