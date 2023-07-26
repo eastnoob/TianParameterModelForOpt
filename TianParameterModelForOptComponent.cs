@@ -7,6 +7,7 @@ using Grasshopper.Kernel.Types;
 using Rhino.Geometry;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace TianParameterModelForOpt
@@ -91,12 +92,15 @@ namespace TianParameterModelForOpt
             // ------------------------------ 以下是临时变量，用于传出向量与曲面，以便于在Rhino中二次生成 --------------------------------
 
             pManager.AddTextParameter("---- Temporary ----", "---- T ----", "Temporary items, which are floors and vectors", GH_ParamAccess.item);
+
+            //-------------------------------------------------------------------------------------------------------------------
+
             // allFloors，列表曲线，表达建筑的所有的平面
             pManager.AddCurveParameter(Name = "AllFloors", NickName = "AF", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
             // allFloorsPath, 列表向量，表达建筑的所有的平面的法向量
             pManager.AddVectorParameter(Name = "AllFloorsPath", NickName = "AFP", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
 
-            pManager.AddCurveParameter(Name = "SingleBlocks", NickName = "SB", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
+            pManager.AddBrepParameter(Name = "SingleBlocks", NickName = "SB", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
             //-----------------------------------------------------------------------------------------------------
 
             // --- Economic indicators ---，用于标识下方的节点为经济指标，无实际意义
@@ -183,13 +187,22 @@ namespace TianParameterModelForOpt
 
             List<Curve> allFloorsPlanes = new List<Curve>();
             List<Vector3d> allFloorsPaths = new List<Vector3d>();
-
+            List<Brep> allFloors = new List<Brep>();
             /*--------------------------------------------------图形--------------------------------------------------------*/
 
             // 用于测试
             List<Curve> sketchs = new List<Curve>();
-            List<Curve> singleBlocks = new List<Curve>();
+            List<Brep> singleBlocks = new List<Brep>();
             //floorNum = new List<int>() { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+
+            // --------------------------------- 日志系统
+            // 获取当前日期和时间
+            DateTime now = DateTime.Now;
+
+            // 将日期和时间转换为指定格式的字符串
+            string formattedDate = now.ToString("yyyyMMdd_HHmm");
+
+            Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
 
             // 函数执行
             int landIndex = 0;
@@ -197,7 +210,7 @@ namespace TianParameterModelForOpt
             while (landIndex < lands.Count)
             {
                 //var a = floorNum.ToString();
-                Rhino.RhinoApp.WriteLine("======================================== FloorNum: ======================================================" + floorNum.ToString());
+                Rhino.RhinoApp.WriteLine("-------------------------------- New building ------------------------------------");
                 //Console.WriteLine("======================================== FloorNum: ======================================================" + floorNum.ToString());
                 // 初始化Land
                 Land thisLand = new Land(baseCurve, lands[landIndex], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
@@ -216,9 +229,11 @@ namespace TianParameterModelForOpt
                 if (offsetedBaseCurveArea == 0)
                     offsetedBaseCurveArea = AreaMassProperties.Compute(thisLand.baseCurve).Area;
 
+
                 // 条件判断，如果land不生成建筑，则跳过，将一个null放入建筑列表占位
                 if (thisLand.buildingTypeOfThisLandCurve.Contains("NO"))
                 {
+                    Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
                     allBuildings.Add(null);
 
                     // 绿地
@@ -233,38 +248,64 @@ namespace TianParameterModelForOpt
                 }
                 else
                 {
+
+                    Console.WriteLine("The Land" + landIndex.ToString() + "is valied!");
+                    Console.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
+
+                    Console.WriteLine("Land index: " + landIndex);
+                    Console.WriteLine("Floor number: " + floorNum[landIndex]);
+
+                    Trace.WriteLine("The Land" + landIndex.ToString() + "is valied!");
+                    Trace.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
+                    Trace.WriteLine("Land index: " + landIndex);
+                    Trace.WriteLine("Floor number: " + floorNum[landIndex]);
+
                     // 初始化building
                     Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
 
-                    // ------------------------临时变量------------------------
-                    singleBlocks.AddRange(thisBuilding.singleBlocks);
+                    //allBuildings.Add(thisBuilding.allFloors);
 
-                    // 装载保存
-                    allBuildings.Add(thisBuilding.buildingBrep);
+                    //// ------------------------临时变量------------------------
+                    //Brep aaa = thisBuilding.judgeBrep;
+                    //Brep[] bbb =
+                    //allFloors.Add(aaa);
 
-                    // 绿地
-                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
-                    allGreenLand.Add(greenLand.greenLandBrep);
+                    //Brep[] allBreps = thisBuilding.allFloors;
+                    //List<Brep> allBreps = thisBuilding.allFloors;
+                    //allFloors.AddRange(allBreps);
+
+                    //singleBlocks.AddRange(thisBuilding.brepOfTheBuilding);
+
+                    //singleBlocks.AddRange(thisBuilding.singleBlocks);
 
 
-                    // 建筑基底面积（单个）
-                    totalBuildingArea += AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
-                    //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+                    //// 装载保存
+                    allBuildings.Add(thisBuilding.allFloors);
 
-                    // 建造面积（单个
-                    totalConstructArea += (AreaMassProperties.Compute(thisBuilding.floorSketch).Area) * floorNum[landIndex];
-                    //double constructArea = buildingArea * floorNum[index];
+                    //// 绿地
+                    //GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                    //allGreenLand.Add(greenLand.greenLandBrep);
 
-                    // 绿地面积(单个)
-                    totalGreenLandArea += greenLand.greenLandArea;
-                    //double greenLandArea = greenLand.greenLandArea;
 
-                    // 房间数量（单个）
-                    roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                    //// 建筑基底面积（单个）
+                    //totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
+                    ////double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
 
-                    // ---------------------临时变量---------------------
-                    allFloorsPlanes.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Keys.ToList());
-                    allFloorsPaths.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Values.ToList());
+                    //// 建造面积（单个
+                    //totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
+                    ////double constructArea = buildingArea * floorNum[index];
+
+                    //// 绿地面积(单个)
+                    //totalGreenLandArea += greenLand.greenLandArea;
+                    ////double greenLandArea = greenLand.greenLandArea;
+
+                    //// 房间数量（单个）
+                    //roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+
+                    //// ---------------------临时变量---------------------
+                    //allFloorsPlanes.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Keys.ToList());
+                    //allFloorsPaths.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Values.ToList());
+
                 }
 
 
@@ -324,6 +365,8 @@ namespace TianParameterModelForOpt
             DA.SetDataList("AllFloorsPath", allFloorsPaths);
             DA.SetDataList("SingleBlocks", singleBlocks);
 
+            Trace.Close();
+
         }
 
         /// <summary>
@@ -350,5 +393,8 @@ namespace TianParameterModelForOpt
         /// that use the old ID will partially fail during loading.
         /// </summary>
         public override Guid ComponentGuid => new Guid("c454ce44-3863-40bc-b880-d335536a6570");
+
+
+        
     }
 }

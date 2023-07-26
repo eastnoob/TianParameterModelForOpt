@@ -34,6 +34,7 @@ namespace TianParameterModelForOpt
                                                         Dictionary<string, double> directionAndLengths,
                                                         string ew, string ns,
                                                         double shortestLandDepth,
+                                                        double shortestBrunchLength,
                                                         double shortestBLength,
                                                         double shortestLLength,
                                                         double shortestULength,
@@ -66,30 +67,39 @@ namespace TianParameterModelForOpt
                     return initialCondition;
                 }
 
-                else
+                else if (directionAndLengths.Max(x => x.Value) >= shortestBLength)
                 {
+                
                     // TODO 记录日志：地块可以生成
 
                     // 如果此时最短边超过了shortestLandLength, 但是没超过shortestLLength, 
                     if (directionAndLengths.Min(x => x.Value) < shortestLLength)
                     {
-                        // 如果最长边不足以构成L，则将"B"加入到initialCondition中
-                        if (directionAndLengths.Max(x => x.Value) < shortestLLength)
+                        // 如果brunch的长度达不到，就是一个B
+                        if (directionAndLengths.Min(x => x.Value) < shortestBrunchLength)
                             buildingType = "B";
-                        //AddInToJudgeList(initialCondition, "B");
-                        // 如果最长边足以构成L
-                        else if (directionAndLengths.Max(x => x.Value) >= shortestLLength)
+                        // 如果达到了，那么L起步
+                        else
                         {
-                            // 且足以构成U，则将"U"加入到initialCondition中
-                            if (directionAndLengths.Max(x => x.Value) >= shortestULength)
-                                buildingType = "U";
-                            //AddInToJudgeList(initialCondition, "U");
+                            // 如果最长边不足以构成L，则将"B"加入到initialCondition中
+                            if (directionAndLengths.Max(x => x.Value) < shortestLLength)
+                                buildingType = "B";
+                            //AddInToJudgeList(initialCondition, "B");
+                            // 如果最长边足以构成L
+                            else if (directionAndLengths.Max(x => x.Value) >= shortestLLength)
+                            {
+                                // 且足以构成U，则将"U"加入到initialCondition中
+                                if (directionAndLengths.Max(x => x.Value) >= shortestULength)
+                                    buildingType = "U";
+                                //AddInToJudgeList(initialCondition, "U");
 
-                            // 否则将"L"加入到initialCondition中
-                            else
-                                buildingType = "L";
-                            //AddInToJudgeList(initialCondition, "L");
+                                // 否则将"L"加入到initialCondition中
+                                else
+                                    buildingType = "L";
+                                //AddInToJudgeList(initialCondition, "L");
+                            }
                         }
+
                     }
 
                     // 如果此时最短边超过了L,
@@ -100,11 +110,21 @@ namespace TianParameterModelForOpt
                         {
                             // 如果最长边已经超过了L，但是没超过U，则将"L"加入到initialCondition中
                             if (directionAndLengths.Max(x => x.Value) < shortestULength)
-                                //AddInToJudgeList(initialCondition, "L");
-                                buildingType = "L";
+                            {
+                                if (directionAndLengths.Min(x => x.Value) < shortestBrunchLength)
+                                    buildingType = "B";
+                                else
+                                    buildingType = "L";
+                            }
 
                             // 否则为U
                             else
+                            {
+                                if (directionAndLengths.Min(x => x.Value) < shortestLLength)
+                                    buildingType = "B";
+                                else
+                                    buildingType = "U ";
+                            }
                                 //AddInToJudgeList(initialCondition, "U");
                                 buildingType = "U";
                         }
@@ -114,8 +134,12 @@ namespace TianParameterModelForOpt
                         {
                             // 但还没到O
                             if (directionAndLengths.Min(x => x.Value) < shortestOLength)
+                                if(directionAndLengths.Min(x => x.Value) < shortestBrunchLength) { buildingType = "B";}
+                                else
+                                {
+                                    buildingType = "U";
+                                }
                                 //AddInToJudgeList(initialCondition, "U");
-                                buildingType = "U";
 
                             else
                                 //AddInToJudgeList(initialCondition, "O");
@@ -338,7 +362,7 @@ namespace TianParameterModelForOpt
             }
             else if (buildingType == "O")
             {
-                // 对于u，无脑全加进去就行了
+                // 对于o，无脑全加进去就行了
                 if(initialCondition.Count != 4)
                 {
                     foreach(var direction in adjacentEdges.Keys)
@@ -351,7 +375,11 @@ namespace TianParameterModelForOpt
                         initialCondition.Add(buildingType);
                         return initialCondition;
                     }
-                    
+                }
+                if (initialCondition.Count == 4)
+                {
+                    initialCondition.Add(buildingType);
+                    return initialCondition;
                 }
             }
             initialCondition.Add(buildingType);

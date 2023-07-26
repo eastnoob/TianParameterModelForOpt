@@ -1,4 +1,7 @@
-﻿using Grasshopper.Kernel.Types.Transforms;
+﻿using Eto.Forms;
+using Grasshopper.Kernel.Types.Transforms;
+using MoreLinq;
+using MoreLinq.Extensions;
 using Rhino;
 using Rhino.Geometry;
 using System;
@@ -9,6 +12,9 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
+using TianParameterModelForOpt._4_repair;
+using static Rhino.DocObjects.PhysicallyBasedMaterial;
 //using static Grasshopper.DataTree<T>;
 
 namespace TianParameterModelForOpt
@@ -17,7 +23,7 @@ namespace TianParameterModelForOpt
     /// 这个类是用来描述建筑的，目的是生成建筑的形体<\br>
     /// 这个函数仅仅生成单体的建筑
     /// </summary>
-    internal class Building
+    public class Building
     {
         // 属性
         // land
@@ -31,7 +37,11 @@ namespace TianParameterModelForOpt
         int floorNum;
 
         // 楼层平面图
-        public Curve floorSketch;
+        public Dictionary<Curve, Curve> allEdgeWithOffsetBaseCurve;
+        public Dictionary<string, string> offsetBehavioursOfDirections;
+
+        public Dictionary<Curve, string> offsetBehavioursOfLandcurves;
+        //public Curve floorSketch;
 
         // 所有楼层的平面图
         public Dictionary<Curve, Vector3d> allfloorPlanesAndItsVectors;
@@ -42,391 +52,519 @@ namespace TianParameterModelForOpt
         // *********** 楼层实体图形
         public List<Brep> buildingBrep;
 
-        // debug用变量
+
+        // 底面，用于算面积
+        public BrepFace bottomSurface;
+
+        // ----------------------- debug用变量 -------------------------------
         public List<Curve> singleBlocks;
+        public Brep[] singleBlockBreps;
+        public Brep[] brepOfTheBuilding;
+        public Brep[] judgeBrepArray;
+        public List<Brep> allFloors;
+
 
         // 构造器，传入Land类的land，楼层高度，楼层数量，和楼层平面图
         public Building(Land land, double groundFloorHeight, double standardFloorHeight, int floorNum/*, Curve floorSketchs*/)
         {
+
+
             this.land = land;
             this.groundFloorHeight = groundFloorHeight;
             this.standardFloorHeight = standardFloorHeight;
             this.floorNum = floorNum;
-            this.floorSketch = Draw.DrawSketchOfABuilding(land);
+            //this.floorSketch = Draw.DrawSketchOfABuilding(land);
+            this.allEdgeWithOffsetBaseCurve = Draw.DrawSketchOfABuilding(land, out offsetBehavioursOfDirections);
 
 
 
-            //this.isBoundageOrNot = false;
-
-            // 生成所有的楼层平面图
-            this.allfloorPlanesAndItsVectors = DrawAllFloorsOfABuilding(floorSketch, floorNum/*, isBoundageOrNot*/);
-
-            // ********** 楼层实体图形
-            this.buildingBrep = DrawBuildingFloorBlocks();
-
-            // =================== debug用变量
-            this.singleBlocks = Draw.ReturnSingleBlocks(land);
-
-        }
-
-        /*---------------------------------------挤出向量---------------------------------------*/
-
-        // boundage的建筑物底层挤出向量
-        public Vector3d CreateBoundageBuildingGroundFloorVector(Curve sketch)
-        {
-            if (sketch.IsPlanar() == false)
-                Curve.ProjectToPlane(sketch, Plane.WorldXY);
-
-            var groundFloorHeight = this.groundFloorHeight;
-
-            // 首层不上移动
-            Point3d startingPoint = sketch.PointAtStart;
-
-            Vector3d groundFloorVector = new Vector3d(0, 0, groundFloorHeight);
-
-            // Translate the vector to start at the starting point of the sketch
-            groundFloorVector.Transform(Transform.Translation(startingPoint - Point3d.Origin));
-
-            return groundFloorVector;
-
-            //// 先检测curve是不是平面曲线
-            //if (sketch.IsPlanar() == false)
-            //    Curve.ProjectToPlane(sketch, Plane.WorldXY);
-
-            //Vector3d groundFloorVector = new Vector3d(0, 0, groundFloorHeight);
-            //Transform transform = Transform.Translation(sketch.PointAtStart.X, sketch.PointAtStart.Y, sketch.PointAtStart.Z);
-            //groundFloorVector.Transform(transform);
-            //return groundFloorVector;
-        }
-
-        // 建筑物标准层挤出向量
-        public Vector3d CreateStandardFloorVector(Curve sketch)
-        {
-            if (sketch.IsPlanar() == false)
-                Curve.ProjectToPlane(sketch, Plane.WorldXY);
-
-            // 新方法
-            // Get the starting point of the passed-in Curve sketch
-            Point3d startingPoint = sketch.PointAtStart;
-
-            // Create a new vector with length equal to the standard floor height and in the z-axis direction
-            Vector3d standardFloorVector = new Vector3d(0, 0, standardFloorHeight);
-
-            // Translate the vector to start at the starting point of the sketch
-            standardFloorVector.Transform(Transform.Translation(startingPoint - Point3d.Origin));
-
-            // Return the final vector
-            return standardFloorVector;
+            offsetBehavioursOfLandcurves = new Dictionary<Curve, string>();
 
 
-            // 老方法备份
-            //Vector3d standardFloorVector = new Vector3d(0, 0, standardFloorHeight);
-            //Transform transform = Transform.Translation(sketch.PointAtStart.X, sketch.PointAtStart.Y, sketch.PointAtStart.Z);
-            //standardFloorVector.Transform(ref transform);
-            //return standardFloorVector;
-        }
-
-        /*---------------------------------向上复制底面---------------------------------*/
-        /// <summary>
-        /// 附属方法，复制并移动 Curve，用于实现在前一次的基础上复制
-        /// </summary>
-        /// <param name="sourceCurve">待复制的曲线</param>
-        /// <param name="copyDistance">移动的距离</param>
-        /// <returns>移动并复制后的曲线</returns>
-        private Curve CopyAndMoveCurve(Curve sourceCurve, double copyDistance, out Vector3d moveVector)
-        {
-            // 复制曲线
-            Curve duplicateCurve = sourceCurve.DuplicateCurve();
-
-            // 移动曲线
-            moveVector = CreateStandardFloorVector(sourceCurve) * copyDistance;
-            duplicateCurve.Translate(moveVector);
-
-            return duplicateCurve;
-        }
-
-        /// <summary>
-        /// 附属方法：使用递归的方式生成建筑物的每一层的曲面，并将每一楼层的曲面及其相应的上移向量存储在一个字典中。
-        /// </summary>
-        /// <param name="sketchOfBuildingFloor">建筑物的一楼轮廓曲面</param>
-        /// <param name="floorNum">建筑物楼层数</param>
-        /// <param name="emptySketchWithDirection">空字典，用于存储生成的每一楼层曲面及其相应的上移向量</param>
-        /// <returns>一个字典，其中每个键值对都表示建筑物的一个楼层，键对应的值是该楼层上移的矢量</returns>
-        public Dictionary<Curve, Vector3d> RecursiveReplicationCurve(Curve sketchOfBuildingFloor, int floorNum, Dictionary<Curve, Vector3d> emptySketchWithDirection)
-        {
-            if (floorNum == 0)
-                return emptySketchWithDirection;
-            else
+            // 建立偏移结果与condition
+            foreach (string direction in offsetBehavioursOfDirections.Keys)
             {
-                // 先复制一份
-                Curve sketchAbove = sketchOfBuildingFloor.DuplicateCurve();
-                //再向上移动形成新的楼层
-                Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfBuildingFloor);
-                Transform translation = Transform.Translation(vectorOfTheSketch);
-                sketchAbove.Transform(translation);
-                // 加入字典里面
-                emptySketchWithDirection[sketchAbove] = vectorOfTheSketch;
-                //递归
-                return RecursiveReplicationCurve(sketchOfBuildingFloor: sketchAbove, 
-                                                floorNum: floorNum - 1, 
-                                                emptySketchWithDirection);
-            }
-        }
-
-
-
-        /// <summary>
-        /// 附属方法：根据已有的图纸和复制向量，使用递归复制多个图纸.如果是boundage，则底面只需要向上复制一次，再作为基础底面向上复制即可</param>
-        /// 重载1：普通的楼层
-        /// 
-        /// </summary>
-        /// 
-        /// <param name="sketch">待复制的原始图纸</param>
-        /// <param name="floorNum">要复制的层数</param>
-        /// <param name="vectorOfDuplicate">首次的复制向量</param>
-        /// <param name="duplicated">是否是复制</param>
-        /// <returns>复制的各层图纸</returns>
-        /// 
-        public Dictionary<Curve, Vector3d> DuplicateFloorSketchAndVector(Curve sketchOfStandardFloor, int floorNum)
-        {
-            // -----------------------新方法-----------------------
-            // 这个空的字典会在递归的过程中被填满
-            Dictionary<Curve, Vector3d> emptySketchWithDirection = new Dictionary<Curve, Vector3d>();
-
-            // 再加入首层
-            // 需要生成首层及其对应的向量
-            Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfStandardFloor);
-            emptySketchWithDirection[sketchOfStandardFloor] = vectorOfTheSketch;
-
-
-            // 递归生成其他层
-            var sketchWithDirection = RecursiveReplicationCurve(sketchOfStandardFloor, floorNum - 1, emptySketchWithDirection);
-
-
-            if (sketchWithDirection.Count == emptySketchWithDirection.Count) 
-            {
-                return sketchWithDirection;
-            }
-                
-            else
-            {
-                if (sketchWithDirection.Count > emptySketchWithDirection.Count)
-                    return sketchWithDirection;
-                else
-                    return emptySketchWithDirection;
-            }
-
-            return sketchWithDirection;
-
-
-            //// -----------------------老方法-----------------------
-            ////Curve[] allFloorSketchs = new Curve[floorNum];
-            ////floorNum = this.floorNum;
-            //Dictionary<Curve, Vector3d> sketchWithDirection = new Dictionary<Curve, Vector3d>();
-
-            //// 这个用于存储
-            //if (sketchWithDirection == null)
-            //    sketchWithDirection = new Dictionary<Curve, Vector3d>();
-
-            //// 递归出口
-            //if (floorNum == 0)
-            //    return sketchWithDirection;
-            //else
-            //{
-
-            //    // 先复制一份
-            //    Curve sketchAbove = sketchOfBuildingFloor.DuplicateCurve();
-            //    //再向上移动形成新的楼层
-            //    Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfBuildingFloor);
-            //    Transform translation = Transform.Translation(vectorOfTheSketch);
-            //    sketchAbove.Transform(translation);
-            //    // 加入字典里面
-            //    sketchWithDirection[sketchAbove] = vectorOfTheSketch;
-            //    //递归
-            //    return DuplicateFloorSketchAndVector(sketchOfBuildingFloor: sketchAbove, floorNum: floorNum - 1);
-            //}
-
-        }
-
-        /// <summary>
-        /// 重载2：boundage的楼层，只需要向上复制一次，生成顶楼即可
-        /// </summary>
-        /// <param name="sketchOfGroundFloor"></param>
-        /// <returns></returns>
-        public Dictionary<Curve, Vector3d> DuplicateFloorSketchAndVector(Curve sketchOfGroundFloor)
-        {
-            Dictionary<Curve, Vector3d> sketchWithDirection = new Dictionary<Curve, Vector3d>();
-            // 先复制一份
-            Curve sketchAbove = sketchOfGroundFloor.DuplicateCurve();
-            //再向上移动形成新的楼层
-            Vector3d vectorOfTheSketch = CreateBoundageBuildingGroundFloorVector(sketchOfGroundFloor);
-            Transform translation = Transform.Translation(vectorOfTheSketch);
-            sketchAbove.Transform(translation);
-            // 加入字典里面
-            sketchWithDirection[sketchAbove] = vectorOfTheSketch;
-
-            //// 将首层本身也加入字典
-            //Vector3d vectorOfGroundFloor = CreateBoundageBuildingGroundFloorVector(sketchOfGroundFloor);
-            //sketchWithDirection[sketchOfGroundFloor] = vectorOfGroundFloor;
-            //递归
-            return sketchWithDirection;
-        }
-
-        // ----------------------------------------------******** 生成一整个楼层的底面----------------------------------------------------------------
-        /// <summary>
-        /// 生成一整个楼的所有层的底面 !!!!!!!!!!!!!!!!!!!!!!!
-        /// </summary>
-        /// <param name="sketchOfBuildingFloor"></param>
-        /// <param name="floorNum"></param>
-        /// <param name="isBoundage"></param>
-        /// <returns></returns>
-        public Dictionary<Curve, Vector3d> DrawAllFloorsOfABuilding(Curve sketchOfBuildingFloor, int floorNum/*, bool isBoundage = false*/)
-        {
-            bool isBoundage = this.land.boundageOrNot;
-            // 容器
-            Dictionary<Curve, Vector3d> allFloorsOfABuilding = new Dictionary<Curve, Vector3d>();
-
-            if(isBoundage == false)
-            {
-                allFloorsOfABuilding = DuplicateFloorSketchAndVector(sketchOfBuildingFloor, floorNum);
-
-                if(allFloorsOfABuilding.Count == floorNum)
+                foreach (Curve curve in allEdgeWithOffsetBaseCurve.Keys)
                 {
-                    return allFloorsOfABuilding;
+                    if (land.dispatchedEdges[direction].Contains(curve))
+                    {
+                        offsetBehavioursOfLandcurves[curve] = offsetBehavioursOfDirections[direction];
+                    }
                 }
+            }
+
+            // 建立JudgeBrep
+
+            Brep judgeBrep = GenerateTheBuildingBrepDirectly.CreateJudgeBrepBase(allEdgeWithOffsetBaseCurve, land, 100);
+
+            if (judgeBrep == null)
+            {
+                Curve judgeBase = land.landCurve;
+                judgeBrep = GenerateTheBuildingBrepDirectly.CreateJudgeBrepBase(allEdgeWithOffsetBaseCurve, land, 100);
+            }
+
+            judgeBrepArray = new Brep[] { judgeBrep };
+
+
+
+            //// 临时变量
+            //singleBlockBreps = DebugMethods.CreateAllFloors(this.allEdgeWithOffsetBaseCurve, offsetBehavioursOfLandcurves, land.landCurve);
+
+            allFloors = CreateAllFloors(allEdgeWithOffsetBaseCurve, offsetBehavioursOfLandcurves);
+
+            
+            //// 生成单体建筑物形体
+            //singleBlockBreps = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(land.baseCurve, land.landCurve, );
+
+            // 尝试处理None的问题
+            //brepOfTheBuilding = Brep.CreateBooleanIntersection(judgeBrepArray, singleBlockBreps, 0.001);
+
+            Console.WriteLine("judgedSingleBlockBrep.Length: " );
+
+            /*if (brepOfTheBuilding == null*//* || judgedSingleBlockBrep.Length == 0 *//*)
+            {
+                Brep maxvolumebrep = null;
+
+                if (singleBlockBreps.Length > 1)
+                {
+                    // 取出最大的那一个
+                    Brep[] unionSecond = Brep.CreateBooleanUnion(singleBlockBreps, 0.001);
+
+                    if (unionSecond.Length > 1)
+                    {
+                        //Brep maxvolumebrep = null;
+                        double maxvolume = 0.0;
+
+                        foreach (Brep brep in singleBlockBreps)
+                        {
+                            VolumeMassProperties vmp = VolumeMassProperties.Compute(brep);
+                            double volume = vmp.Volume;
+
+                            if (volume > maxvolume)
+                            {
+                                maxvolume = volume;
+                                maxvolumebrep = brep;
+                            }
+                        }
+                    }
+
+                    else if(unionSecond.Length == 0)
+                        maxvolumebrep = null;
+                    else
+                        maxvolumebrep = unionSecond[0];
+                }
+                Brep[] judgedSingleBlockBreps = new Brep[] { maxvolumebrep };
+
+
+                if (maxvolumebrep == null)
+                    brepOfTheBuilding = null;
+
                 else
                 {
-                    // 说明有问题，要把首层本身也加入进去
-                    allFloorsOfABuilding[sketchOfBuildingFloor] = CreateStandardFloorVector(sketchOfBuildingFloor);
-                    return allFloorsOfABuilding;
+                    // 换用Split方法
+                    Brep[] judged = maxvolumebrep.Split(judgeBrepArray, 0.01);
+
+                    var largestOne = FindTheLargestBrep(judged);
+                    if(largestOne.IsSolid == false)
+                        largestOne = largestOne.CapPlanarHoles(0.01);
+                    
+                    brepOfTheBuilding = new Brep[] { largestOne };
+                    
+                    Console.WriteLine("Repair Complete ! !");
                 }
 
+
+            }*/
+
+
+
+            //judgedSingleBlockBreps[0] = judgeBrep;
+            //judgedSingleBlockBreps = Brep.CreateBooleanIntersection(judgeBrep, singleBlockBreps[0], 0.01);
+
+            //this.buildingBrep = createallfloors(alledgewithoffsetbasecurve, offsetbehavioursoflandcurves);
+            
+            if(! allFloors.Contains(null))
+            {
+                this.buildingBrep = allFloors;
+                this.bottomSurface = GetBottomSurface();
             }
             else
             {
-                // 生成首层及其对应的向量
-                Vector3d vectorOfTheSketch = CreateBoundageBuildingGroundFloorVector(sketchOfBuildingFloor);
-                allFloorsOfABuilding[sketchOfBuildingFloor] = vectorOfTheSketch;
-
-                // 先生成首层
-                Dictionary<Curve, Vector3d> groundFloorMaterials = DuplicateFloorSketchAndVector(sketchOfBuildingFloor);
-                // 再生成其他层
-                Dictionary<Curve, Vector3d> otherFloorMaterials = DuplicateFloorSketchAndVector(groundFloorMaterials.Keys.First(), floorNum - 1);
-
-
-                foreach (KeyValuePair<Curve, Vector3d> item in groundFloorMaterials)
-                {
-                    allFloorsOfABuilding.Add(item.Key, item.Value);
-                }
-                foreach (KeyValuePair<Curve, Vector3d> item in otherFloorMaterials)
-                {
-                    allFloorsOfABuilding.Add(item.Key, item.Value);
-                }
-
-                //otherFloorMaterials.Add(groundFloorMaterials.Keys.First(), groundFloorMaterials.Values.First());
-
-                return allFloorsOfABuilding;
+                this.bottomSurface = null;
             }
+
+           
         }
+
 
         /*---------------------------------------建筑物形体---------------------------------------*/
 
         //附属方法：单层建筑物形体
         public Brep DrawSingleFloorBlock(Curve sketchOfFloor, Vector3d extrudeVector)
+            {
+                // 创建Extrusion
+                Extrusion extrusion = Extrusion.Create(sketchOfFloor, extrudeVector.Length, true);
+
+                //// 对齐方向
+                //extrusion.Transform(Transform.Translation(extrudeVector));
+
+                // 将Extrusion对象转换成Brep对象
+                Brep brep = extrusion.ToBrep(true);
+
+                return brep;
+            }
+
+
+        /* ------------------- 新方法Brep -------------------------------------------*/
+
+        public Brep[] CreateSingleFloorBrep(Dictionary<Curve, Curve> curveWithOffsetedResults, Dictionary<Curve, string> offsetBehavioursOfLandcurves, string isStandard)
         {
-            // 创建Extrusion
-            Extrusion extrusion = Extrusion.Create(sketchOfFloor, extrudeVector.Length,true);
+            this.allEdgeWithOffsetBaseCurve = Draw.DrawSketchOfABuilding(land, out offsetBehavioursOfDirections);
 
-            //// 对齐方向
-            //extrusion.Transform(Transform.Translation(extrudeVector));
+            Dictionary<Curve, Brep> curveWithBrep = new Dictionary<Curve, Brep>();
+            Curve landCurve = land.landCurve;
+            double buildingDepth = land.GetBuildingDepth();
 
-            // 将Extrusion对象转换成Brep对象
-            Brep brep = extrusion.ToBrep(true);
+            double floorHight;
+            if (isStandard == "standard")
+                floorHight = this.standardFloorHeight;
+            else if (isStandard == "ground")
+                floorHight = this.groundFloorHeight;
+            else
+                floorHight = this.standardFloorHeight;
 
-            return brep;
+            var directionWithCurve = land.dispatchedEdges;
+
+            // 此时curveWithOffsetedResults每个只有一条线
+            foreach (KeyValuePair<Curve, Curve> pair in curveWithOffsetedResults)
+            {
+                // 如果是end线，那么生成的体块深度应该是building spacing，仅用来裁剪
+                if (offsetBehavioursOfLandcurves[pair.Key] == "end")
+                {
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength() + 10, land.buildingLandSpacing, floorHight);
+                    curveWithBrep[pair.Key] = curveBrep;
+                }
+
+                // 如果是end-boundage线，那么直接不生成
+                else if (offsetBehavioursOfLandcurves[pair.Key] == "end-boundage")
+                {
+                    //curveWithBrep[pair.Key] = null;
+                    // 尝试向外反方向生成
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength() + 10, - land.buildingLandSpacing, floorHight);
+                    curveWithBrep[pair.Key] = curveBrep;
+                }
+
+                else
+                {
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength(), buildingDepth, floorHight);
+                    curveWithBrep[pair.Key] = curveBrep;
+                }
+
         }
 
-        // ********** 多层组合为一个建筑
-        /// <summary>
-        /// 多层组合为一个建筑
-        /// </summary>
-        /// <param name="sketchOfTheLand"></param>
-        /// <param name="floorNum"></param>
-        /// <param name="isBoundage"></param>
-        /// <returns></returns>
-        public List<Brep> DrawBuildingFloorBlocks(/*Curve sketchOfTheLand, int floorNum, bool isBoundage*/)
-        {
-            Curve sketchOfTheLand = this.floorSketch;
-            int floorNum = this.floorNum;
-            bool isBoundage = land.isABoundageLand;
-            // 用来装一个建筑的所有层的实体
-            List<Brep> building = new List<Brep>();
-            //Brep[] building = new Brep[floorNum];
+            List<Brep> sideBreps = new List<Brep>();
+            List<Brep> endBreps = new List<Brep>();
 
-            // 老方法备用
-            //Dictionary<Curve, Vector3d> materials = DrawAllFloorsOfABuilding(sketchOfTheLand, floorNum, isBoundage);
+
+            // edge 就加， end就减
+            foreach (Curve curve in curveWithBrep.Keys)
+            {
+                if (!offsetBehavioursOfLandcurves[curve].Contains("end"))
+                {
+                    sideBreps.Add(curveWithBrep[curve]);
+                }
+                else
+                {
+                    endBreps.Add(curveWithBrep[curve]);
+                }
+            }
+
+            Brep[] finalBrep;
+
+            Brep[] solidBreps = Brep.CreateBooleanUnion(sideBreps, 0.01);
+
+
+            solidBreps = solidBreps.Where(item => item != null).ToArray();
+            endBreps.RemoveAll(item => item == null);
+
+            foreach (Brep brep in solidBreps)
+            {
+                if (brep != null) {
+                    if (brep.IsSolid == false) {
+                        brep.CapPlanarHoles(0.01);
+                    }
+                }
+                else
+                {
+
+                }
+            }
+
+
+            if (endBreps.Count() > 0)
+            {
+                foreach (Brep brep in endBreps)
+                {
+                    if (brep != null) {
+                        if (brep.IsSolid == false) {
+                            brep.CapPlanarHoles(0.01);
+                        }
+                    }
+                        
+                            
+                    else 
+                    {
+
+                        continue;
+                    }
+                }
+
+                finalBrep = Brep.CreateBooleanDifference(solidBreps, endBreps, 0.01);
+            }
+
+            else
+            {
+                finalBrep = solidBreps;
+            }
+
+
+            foreach (Brep brep in finalBrep)
+            {
+                if (brep.IsSolid == false)
+                    brep.CapPlanarHoles(0.01);
+            }
+
+            if (finalBrep.Length > 1)
+                //return new Brep[] { Find.FindTheLargestBrep(finalBrep) };
+                finalBrep = new Brep[] { Find.FindTheLargestBrep(finalBrep) };
+
+            else { }
+
+            //return finalBrep;
+            Judge judgeBrep = new Judge(curveWithOffsetedResults, land);
+            var repair = judgeBrep.RepairFloorBlock(finalBrep);
+            return repair;
+        }
+
+        // 判断如何生成并移动
+        public List<Brep> CreateAllFloors(Dictionary<Curve, Curve> curveWithOffsetedResults, Dictionary<Curve, string> offsetBehavioursOfLandcurves)
+        {
+            bool isBoundage = land.isABoundageLand;
+
+            //Dictionary<Curve, Brep> curveWithBrep = new Dictionary<Curve, Brep>();
+
+            List<Brep> copies = new List<Brep>();
+
+            if (isBoundage == true)
+                {
+                    Brep[] groundfloors = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "ground");
+                    Brep[] otherfloors = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "others");
+
+                    Brep groundFloor;
+                    Brep otherFloor;
+
+                    if (groundfloors.Count() > 1) { groundFloor = FindTheLargestBrep(groundfloors); }
+                        
+                    else if(groundfloors == null) { groundFloor = null; }
+
+                    else if (groundfloors.Length==0) { groundFloor = null; }
+
+                    else { groundFloor = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "ground")[0]; }
+
+
+                    if (otherfloors.Count() > 1) { otherFloor = FindTheLargestBrep(otherfloors); }
+                        
+                    else if(otherfloors == null) { otherFloor = null; }
+
+                    else if (otherfloors.Length==0) { otherFloor = null; }
+
+                    else { otherFloor = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "standard")[0]; }
+                        
+
+
+                    if(groundFloor == null && otherFloor == null)
+                    {
+                        int index = 0;
+                        while(index < floorNum){
+                        copies.Add(null);
+                        index++;
+                        }
+
+                        return copies;
+                    }
+
+                    var upToFloor2 = new Vector3d(0, 0, this.groundFloorHeight);
+                    var upToFloorOthers = new Vector3d(0, 0, this.standardFloorHeight);
+
+
+                    // 首层
+                    copies.Add(groundFloor);
+
+                    // 二层
+                    otherFloor.Translate(upToFloor2);
+                    copies.Add(otherFloor);
+
+                    // 三层及以上
+                    int time = this.floorNum - 2;
+
+                    RecursiveDuplicate(otherFloor, time, copies, upToFloorOthers);
+
+                    return copies;
+                }
+            else
+                {
+                    Brep[] baseFloors = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "standard");
+
+                    Brep baseFloor;
+
+                    if (baseFloors.Count() > 1)
+                        baseFloor = FindTheLargestBrep(baseFloors);
+                    else
+                        baseFloor = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "standard")[0];
+               
+                    copies.Add(baseFloor);
+                    var upToFloorOthers = new Vector3d(0, 0, this.standardFloorHeight);
+
+                    RecursiveDuplicate(baseFloor, floorNum - 1, copies, upToFloorOthers);
+
+                    return copies;
+                }
+        }
+
+        public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
+    {
+
+        if (time == 0)
+        {
+            return allBreps;
+        }
+        else
+        {
+            // 先复制一份
+            Brep brepAbove = brepNeedDuplicate.DuplicateBrep();
+            //再向上移动形成新的楼层
 
             //// 新方法
-            Dictionary<Curve, Vector3d> materials = this.allfloorPlanesAndItsVectors;
+            //// Get the starting point of the passed-in Curve sketch
+            //Point3d startingPoint = brepAbove.GetBoundingBox(true).Center;
 
-            //int index = 0;
-            foreach (KeyValuePair<Curve, Vector3d> pair in materials)
-            {
-                Brep singleBuildingFloorBerp = DrawSingleFloorBlock(pair.Key, pair.Value);
-                building.Add(singleBuildingFloorBerp);
-                //building[index] = singleBuildingFloorBerp;
-                //index++;
-            }
-            return building;
+            //// Create a new vector with length equal to the standard floor height and in the z-axis direction
+            //Vector3d standardFloorVector = new Vector3d(0, 0, standardFloorHeight);
+
+            //// Translate the vector to start at the starting point of the sketch
+            //standardFloorVector.Transform(Transform.Translation(startingPoint - Point3d.Origin));
+
+
+            //Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfBuildingFloor);
+
+            Transform translation = Transform.Translation(upToFloorOthers);
+            brepAbove.Transform(translation);
+            // 加入字典里面
+            allBreps.Add(brepAbove);
+            //emptySketchWithDirection[sketchAbove] = vectorOfTheSketch;
+            //递归
+            return RecursiveDuplicate(brepNeedDuplicate: brepAbove,
+                                            time: time - 1,
+                                            allBreps,
+                                            upToFloorOthers: upToFloorOthers);
         }
+
+    }
+
+        public Brep FindTheLargestBrep(Brep[] multipleBreps)
+        {
+            // 判断最大的
+            Brep maxVolumeBrep = null;
+            double maxVolume = 0.0;
+
+            foreach (Brep brep in multipleBreps)
+            {
+                //VolumeMassProperties vmp = VolumeMassProperties.Compute(brep);
+                //double volume = vmp.Volume;
+                double volume = brep.GetVolume();
+
+                if (volume > maxVolume)
+                {
+                    maxVolume = volume;
+                    maxVolumeBrep = brep;
+                }
+            }
+            //if (maxVolumeBrep != null)
+            //    maxVolumeBrep = multipleBreps[0];
+            return maxVolumeBrep;
+        }
+  
 
         /*-------------------------------指标计算-----------------------------------------*/
-        public double GetBuildingArea(List<Curve> floors)
+
+        // 获取底面
+        public BrepFace GetBottomSurface()
+    {
+        Brep brep = this.allFloors[0];
+        BrepFace bottomFace = null;
+        foreach (BrepFace face in brep.Faces)
         {
-            double totalAreaOfBuildingFloors = 0;
-            foreach(Curve floor in floors)
+            Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
+            if (normal.Z < -0.5) // 底面法线方向朝下
             {
-                // 判断floor是不是封闭曲线
-                if(floor.IsClosed == false)
-                {
-                    // 如果不是则尝试封闭
-                    floor.MakeClosed(0.001);
-                }
-                // 封闭曲线floor的面积
-                double area = AreaMassProperties.Compute(floor).Area;
-                totalAreaOfBuildingFloors += area;
+                bottomFace = face;
+                break;
             }
-            return totalAreaOfBuildingFloors;
         }
+        return bottomFace;
+    }
+
+
+
+        public double GetBuildingArea(List<Curve> floors)
+    {
+        double totalAreaOfBuildingFloors = 0;
+        foreach (Curve floor in floors)
+        {
+            // 判断floor是不是封闭曲线
+            if (floor.IsClosed == false)
+            {
+                // 如果不是则尝试封闭
+                floor.MakeClosed(0.001);
+            }
+            // 封闭曲线floor的面积
+            double area = AreaMassProperties.Compute(floor).Area;
+            totalAreaOfBuildingFloors += area;
+        }
+        return totalAreaOfBuildingFloors;
+    }
 
         public double GetBaseProjectedArea(Curve sketch)
-        {
-            // 获得封闭曲线sketch的面积
-            double area = AreaMassProperties.Compute(sketch).Area;
-            return area;
-        }
+    {
+        // 获得封闭曲线sketch的面积
+        double area = AreaMassProperties.Compute(sketch).Area;
+        return area;
+    }
 
         public double GetEstimatedRoomAccount(/*List<Curve> floors*/)
         {
             //// 获得单层楼的sketch
             //List <Curve> floors = new List<Curve> { floorSketch };
+            // 单层楼的面积
+            double areaOfSingleFloor = 0;
+            if (bottomSurface == null)
+                areaOfSingleFloor = AreaMassProperties.Compute(bottomSurface).Area;
 
-            List<Curve> floors = DuplicateFloorSketchAndVector(floorSketch).Keys.ToList();
 
             double buildingDepth = land.GetBuildingDepth();
 
             // 总的建筑面积
-            double totalAreaOfBuildingFloors = GetBuildingArea(floors);
+            double totalAreaOfBuildingFloors;
 
-            if (floors.Count == 0)
+            if (floorNum == 0)
             {
                 return 0;
             }
-            else if(floors.Count == 1 && floorNum >0)
+            else
             {
-                totalAreaOfBuildingFloors *= floorNum;
+                totalAreaOfBuildingFloors = areaOfSingleFloor * floorNum;
             }
-            
+
             // 楼梯间的面积
             double staircaseArea = this.land.staircaseWidth * buildingDepth;
 
@@ -441,4 +579,6 @@ namespace TianParameterModelForOpt
         }
 
     }
-}
+
+} 
+

@@ -1,4 +1,5 @@
-﻿using Rhino;
+﻿using Grasshopper;
+using Rhino;
 using Rhino.Geometry;
 using System;
 using System.Collections.Generic;
@@ -193,11 +194,63 @@ namespace TianParameterModelForOpt
 
             return spliters;
         }
-    
-    
+
+
+        public static Curve EdgeProcessor(Curve edge, Curve landCurve, double buildingSpacing, string condition = "edge")
+        {
+            // double buildingLandSpacing, 
+            // 储存偏移后的边缘
+            double realBuildingSpacingPara = buildingSpacing / 2;
+            List<Curve> spliters = new List<Curve>();
+
+            /*  ------------------------------------------------ EDGE --------------------------------------------------------*/
+
+            if (condition == "edge") // edge,偏移一次，形成坐标系基础线
+            {
+                Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, realBuildingSpacingPara, landCurve);
+                return outsideCurve;
+                //spliters.AddRange(Offset.offsetSideCurve(edge, landCurve, buildingSpacing, buildingDepth));
+
+            }
+            /*--------------------------------------------- Boundage ------------------------------------------------------*/
+
+            else if (condition == "edge-boundage") // 不用偏移，本身就是基准线
+            {
+                return edge;
+                spliters.Add(edge);
+                //spliters.AddRange(Offset.offsetSideCurve(edge, landCurve, 0, buildingDepth));
+
+            }
+
+            /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
+
+            else if (condition == "end-boundage") // boundage，boundage边缘，不偏移，与边缘重合
+            {
+                return edge;
+                // 不偏移
+                spliters.Add(edge);
+            }
+
+            /*----------------------------------------------END SPACING-------------------------------------------------*/
+
+            else if (condition == "end") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
+            {
+                
+                //Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, buildingSpacing, landCurve);
+                //return outsideCurve;
+                return edge;
+                //spliters.AddRange(Offset.offsetEndCurve(edge, landCurve, buildingSpacing));
+            }
+
+            else
+                return null;
+        }
+
+
+
         // ****** 核心
 
-        public static Curve DrawSketchOfABuilding(Land land/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
+        public static Dictionary<Curve, Curve> DrawSketchOfABuilding(Land land, out Dictionary<string, string> offsetBehavioursOfLandcurves/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
         {
             /*--------------------------------------------材料--------------------------------------------*/
             bool boundageOrNot = land.boundageOrNot;
@@ -238,10 +291,10 @@ namespace TianParameterModelForOpt
             List<string> buildingTypeOfThisLandCurve = land.buildingTypeOfThisLandCurve;
 
             // ***** 建立原有的的边与偏移结果的联系
-            Dictionary<Curve, List<Curve>> curveWithOffsetedResults = new Dictionary<Curve, List<Curve>>();
+            Dictionary<Curve, Curve> curveWithOffsetedResults = new Dictionary<Curve, Curve>();
 
             // 获得四边的condition
-            Dictionary<string, string> offsetBehavioursOfLandcurves = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
+            offsetBehavioursOfLandcurves = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
 
 
             // 遍历每一个方向
@@ -251,152 +304,166 @@ namespace TianParameterModelForOpt
                 foreach (Curve originalEdge in dispatchedEdges[direction])
                 {
                     // 对于原始边进行处理，得到单个的原始边的偏移后的边
-                    List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
+                    //List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
+                    //只生成基准线的版本
+                    Curve offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
                     curveWithOffsetedResults[originalEdge] = offsetedEdge;
                 }
 
-
-                // 开始处理intersection
             }
+            return curveWithOffsetedResults;
 
-            /*-------------------------------------2. 再处理intersection -----------------------------------------*/
-            // ******* 用来装Curve和它的intersection
-            Dictionary<Curve, List<Point3d>> curveWithIntersections = new Dictionary<Curve, List<Point3d>>();
+        //    /*------------------------------------------ 直接生成Brep ------------------------------------------------*/
+        //    Dictionary<Curve, Brep> curveWithBrep = new Dictionary<Curve, Brep>();
 
-            foreach (Curve curve in curveWithOffsetedResults.Keys)
-            {
-                curveWithIntersections[curve] = new List<Point3d>();
-            }
-
-
-            // 用这个排除重复出现的组合，正确的组合应该是12，13，14，23，24，34这样
-            //List< HashSet<Curve> > usedCurvePairs = new List<HashSet<Curve>>();
-
-            // ## 这里可以用for循环，通过监督index的方式确定是否被重复使用了
-
-            // 运算每一对边的intersection
-
-            // 尝试不要使用foreach，使用for循环，通过监督index的方式确定是否被重复使用了
-            //foreach (KeyValuePair<Curve, List<Curve>> pair1 in curveWithOffsetedResults)
-            //{
-            //    foreach(KeyValuePair<Curve, List<Curve>> pair2 in curveWithOffsetedResults)
-            //    {
-
-            List<int[]> usedCurveIndexPairs = new List<int[]>();
-
-            for (int i = 0; i < curveWithOffsetedResults.Count; i++)
-            {
-                for (int j = 0; j < curveWithOffsetedResults.Count; j++)
-                {
-                    KeyValuePair<Curve, List<Curve>>  pair1 = curveWithOffsetedResults.ElementAt(i);
-                    KeyValuePair<Curve, List<Curve>>  pair2 = curveWithOffsetedResults.ElementAt(j);
-
-                    // 用于判断是否被使用过
-                    bool isBeUsed = false;
-
-                    int[] usedCurveIndexPair = { i, j };
-
-                    // 不要自交
-                    if (i != j || pair1.Equals(pair2) == false || pair1.Key != pair2.Key)
-
-                    {
-                        //// 有可能不需要转换成Dictionary
-                        //// 配合参数数据类型
-                        //Dictionary<Curve, List<Curve>>temporaryPair1 = new Dictionary<Curve, List<Curve>>();
-                        //temporaryPair1.Add(pair1.Key, pair1.Value);
-                        //Dictionary<Curve, List<Curve>>temporaryPair2 = new Dictionary<Curve, List<Curve>>();
-                        //temporaryPair2.Add(pair2.Key, pair2.Value);
-
-                        // 用来装intersection的点的临时的参数
-                        Dictionary<Curve, List<Point3d>> curveWithIntersection1 = new Dictionary<Curve, List<Point3d>>();
-                        Dictionary<Curve, List<Point3d>> curveWithIntersection2 = new Dictionary<Curve, List<Point3d>>();
+        //    // 此时curveWithOffsetedResults每个只有一条线
+        //    foreach (KeyValuePair<Curve, Curve> pair in curveWithOffsetedResults)
+        //    {
+        //        Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength, buildingDepth, floorHight);
+        //        curveWithBrep[pair.Key] = curveBrep;
+        //    }
 
 
-                        // 1 先确定是不是计算过了，计算过的对久不用计算了
-
-                        foreach (var arrayOfPair in usedCurveIndexPairs)
-                        {
-                            // 两个都出现过，证明已经运算过了，这样就没必要再算一次
-                            if (arrayOfPair.Contains(i) && arrayOfPair.Contains(j))
-                            {
-                                Console.WriteLine("出现过一次了，不要重复");
-                                isBeUsed = true;
-                                break;
-                            }
-                            else
-                            {
-                                // 证明这一段没有运算过，可以通过
-                                // 不做任何事情，继续循环
-                            }
-                        }
-
-                        // 经过以上步骤，证明这一对没有被运算过，那么就可以运算了
-                        if (isBeUsed == false)
-                        {
-                        // 2. 进行相交运算
-
-                            bool isIntersection = false;
-
-                            // curveWithIntersection1 是 i 线段的交点结果
-                            // curveWithIntersection2 是 j 线段的交点结果
-                            // 注意此时间curveWithIntersection1 中应该只有一个键
-                            isIntersection = Intersect.GetIntersections(pair1, pair2, landCurve, 0.001,
-                                                                    out curveWithIntersection1,
-                                                                    out curveWithIntersection2);
-
-                            // 3. 如果有交点，那么就要进行处理
-                            if (isIntersection == true)
-                            {
-                                // 加入到对应的边缘当中
-                                curveWithIntersections[curveWithIntersection1.Keys.First()].AddRange(curveWithIntersection1[curveWithIntersection1.Keys.First()]);
-                                curveWithIntersections[curveWithIntersection2.Keys.First()].AddRange(curveWithIntersection2[curveWithIntersection2.Keys.First()]);
-
-                                usedCurveIndexPairs.Add(usedCurveIndexPair);
-                            }
 
 
-                        }
+        //    /*-------------------------------------2. 再处理intersection -----------------------------------------*/
+        //    // ******* 用来装Curve和它的intersection
+        //    Dictionary<Curve, List<Point3d>> curveWithIntersections = new Dictionary<Curve, List<Point3d>>();
 
-                        else
-                            usedCurveIndexPairs.Add(usedCurveIndexPair);
-                    }
-                    else 
-                    {
-                        usedCurveIndexPairs.Add(usedCurveIndexPair);
-                        // 自交了，所以不做任何事情，不添加新的intersection到curveWithIntersections中，以显示二者没有交点
-                    }
-                }
-            }
-
-            /*-------------------------------------3. 最后再生成底面图形 -----------------------------------------*/
-        // 使用intersection们来生成图形
-
-        // 用来装单个边缘的对应矩形
-            List<Curve> singleBlocks = new List<Curve>();
-
-            foreach (Curve curve in curveWithIntersections.Keys)
-            {
-                //dispatchedEdges
-
-                bool offsetConditionOfTheLand = curveWithOffsetedResults[curve].Count != 2;
-                // true是不生成，false是生成
-                // 处于end或者没有参与的边缘，不要参与矩形的生成
+        //    foreach (Curve curve in curveWithOffsetedResults.Keys)
+        //    {
+        //        curveWithIntersections[curve] = new List<Point3d>();
+        //    }
 
 
-                // 单个边缘对应的矩形
-                Curve singleBlock = GenerateSketch.DrawSingleBlockSketch(curveWithIntersections[curve], offsetConditionOfTheLand);
-                if (singleBlock != null)
-                {
-                    singleBlocks.Add(singleBlock);
-                }
+        //    // 用这个排除重复出现的组合，正确的组合应该是12，13，14，23，24，34这样
+        //    //List< HashSet<Curve> > usedCurvePairs = new List<HashSet<Curve>>();
 
-            }
+        //    // ## 这里可以用for循环，通过监督index的方式确定是否被重复使用了
+
+        //    // 运算每一对边的intersection
+
+        //    // 尝试不要使用foreach，使用for循环，通过监督index的方式确定是否被重复使用了
+        //    //foreach (KeyValuePair<Curve, List<Curve>> pair1 in curveWithOffsetedResults)
+        //    //{
+        //    //    foreach(KeyValuePair<Curve, List<Curve>> pair2 in curveWithOffsetedResults)
+        //    //    {
+
+        //    List<int[]> usedCurveIndexPairs = new List<int[]>();
+
+        //    for (int i = 0; i < curveWithOffsetedResults.Count; i++)
+        //    {
+        //        for (int j = 0; j < curveWithOffsetedResults.Count; j++)
+        //        {
+        //            KeyValuePair<Curve, List<Curve>>  pair1 = curveWithOffsetedResults.ElementAt(i);
+        //            KeyValuePair<Curve, List<Curve>>  pair2 = curveWithOffsetedResults.ElementAt(j);
+
+        //            // 用于判断是否被使用过
+        //            bool isBeUsed = false;
+
+        //            int[] usedCurveIndexPair = { i, j };
+
+        //            // 不要自交
+        //            if (i != j || pair1.Equals(pair2) == false || pair1.Key != pair2.Key)
+
+        //            {
+        //                //// 有可能不需要转换成Dictionary
+        //                //// 配合参数数据类型
+        //                //Dictionary<Curve, List<Curve>>temporaryPair1 = new Dictionary<Curve, List<Curve>>();
+        //                //temporaryPair1.Add(pair1.Key, pair1.Value);
+        //                //Dictionary<Curve, List<Curve>>temporaryPair2 = new Dictionary<Curve, List<Curve>>();
+        //                //temporaryPair2.Add(pair2.Key, pair2.Value);
+
+        //                // 用来装intersection的点的临时的参数
+        //                Dictionary<Curve, List<Point3d>> curveWithIntersection1 = new Dictionary<Curve, List<Point3d>>();
+        //                Dictionary<Curve, List<Point3d>> curveWithIntersection2 = new Dictionary<Curve, List<Point3d>>();
+
+
+        //                // 1 先确定是不是计算过了，计算过的对久不用计算了
+
+        //                foreach (var arrayOfPair in usedCurveIndexPairs)
+        //                {
+        //                    // 两个都出现过，证明已经运算过了，这样就没必要再算一次
+        //                    if (arrayOfPair.Contains(i) && arrayOfPair.Contains(j))
+        //                    {
+        //                        Console.WriteLine("出现过一次了，不要重复");
+        //                        isBeUsed = true;
+        //                        break;
+        //                    }
+        //                    else
+        //                    {
+        //                        // 证明这一段没有运算过，可以通过
+        //                        // 不做任何事情，继续循环
+        //                    }
+        //                }
+
+        //                // 经过以上步骤，证明这一对没有被运算过，那么就可以运算了
+        //                if (isBeUsed == false)
+        //                {
+        //                // 2. 进行相交运算
+
+        //                    bool isIntersection = false;
+
+        //                    // curveWithIntersection1 是 i 线段的交点结果
+        //                    // curveWithIntersection2 是 j 线段的交点结果
+        //                    // 注意此时间curveWithIntersection1 中应该只有一个键
+        //                    isIntersection = Intersect.GetIntersections(pair1, pair2, landCurve, 0.001,
+        //                                                            out curveWithIntersection1,
+        //                                                            out curveWithIntersection2);
+
+        //                    // 3. 如果有交点，那么就要进行处理
+        //                    if (isIntersection == true)
+        //                    {
+        //                        // 加入到对应的边缘当中
+        //                        curveWithIntersections[curveWithIntersection1.Keys.First()].AddRange(curveWithIntersection1[curveWithIntersection1.Keys.First()]);
+        //                        curveWithIntersections[curveWithIntersection2.Keys.First()].AddRange(curveWithIntersection2[curveWithIntersection2.Keys.First()]);
+
+        //                        usedCurveIndexPairs.Add(usedCurveIndexPair);
+        //                    }
+
+
+        //                }
+
+        //                else
+        //                    usedCurveIndexPairs.Add(usedCurveIndexPair);
+        //            }
+        //            else 
+        //            {
+        //                usedCurveIndexPairs.Add(usedCurveIndexPair);
+        //                // 自交了，所以不做任何事情，不添加新的intersection到curveWithIntersections中，以显示二者没有交点
+        //            }
+        //        }
+        //    }
+
+        //    /*-------------------------------------3. 最后再生成底面图形 -----------------------------------------*/
+        //// 使用intersection们来生成图形
+
+        //// 用来装单个边缘的对应矩形
+        //    List<Curve> singleBlocks = new List<Curve>();
+
+        //    foreach (Curve curve in curveWithIntersections.Keys)
+        //    {
+        //        //dispatchedEdges
+
+        //        bool offsetConditionOfTheLand = curveWithOffsetedResults[curve].Count != 2;
+        //        // true是不生成，false是生成
+        //        // 处于end或者没有参与的边缘，不要参与矩形的生成
+
+
+        //        // 单个边缘对应的矩形
+        //        Curve singleBlock = GenerateSketch.DrawSingleBlockSketch(curveWithIntersections[curve], offsetConditionOfTheLand);
+        //        if (singleBlock != null)
+        //        {
+        //            singleBlocks.Add(singleBlock);
+        //        }
+
+        //    }
             
-            // 布尔并集
-            sketchOfABuilding = GenerateSketch.BoolSingleBlockSketchsUnion(singleBlocks);
+        //    // 布尔并集
+        //    sketchOfABuilding = GenerateSketch.BoolSingleBlockSketchsUnion(singleBlocks);
             
 
-            return sketchOfABuilding;
+        //    return sketchOfABuilding;
         }
 
         //----------------------------------------------------debug用----------------------------------------------------

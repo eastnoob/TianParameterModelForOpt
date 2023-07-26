@@ -73,9 +73,11 @@ namespace TianParameterModelForOpt
         // 特殊变量，看情况决定是否启用
         public double floorHeight;
         public double floorNum;
+        public Dictionary<Curve, Curve> allEdgeWithOffsetBaseCurve;
 
+        //public Dictionary<Curve, string>
         // ## 在land生成之处获得其生成类型，为生成build做准备
-        public List<string> buildingTypeOfThisLandCurve { get; set; }
+        public List<string> buildingTypeOfThisLandCurve;
 
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
         public Land (/*List<Curve> baseCurves, */ Curve setBackCurve, Curve landCurve, /*List<Curve> lands,*/
@@ -95,6 +97,7 @@ namespace TianParameterModelForOpt
             this.elevatorWidth = elevatorWidth;
             this.buildingSpacing = buildingSpacing;
             
+            
 
             // 以下是计算属性
             this.absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
@@ -112,12 +115,15 @@ namespace TianParameterModelForOpt
 
             this.buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(boundageDirections, directionAndLength, isWestOrEast, isNorthOrSouth, 
                 GetShortestEndDepth(),
+                GetShortestBrunchLength(),
                 GetShortestBLength(),
                 GetShortestLLength(),
                 GetShortestULength(),
                 GetShortestOLength());
             //this.westOrEast = IsWestOrEast(zones, landCurve);
             //this.northOrSouth = IsNorthOrSouth(zones, landCurve);
+
+            
         }
 
 
@@ -253,14 +259,25 @@ namespace TianParameterModelForOpt
             return buildingDepth;
         }
 
+        public double GetShortestBrunchLength(/*bool isABoundageLand*/)
+        {
+            if (this.isABoundageLand == true)
+                return roomDepth + corridorWidth +  5 * roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
+
+            else
+                return roomDepth + corridorWidth + (5 * roomWidth) + staircaseWidth + elevatorWidth + (2 * buildingLandSpacing);
+
+        }
+
+
         public double GetShortestEndDepth(/*bool isABoundageLand*/)
         {
             double shortestEndDepth = 1.0;
             if (this.isABoundageLand == true)
-                shortestEndDepth = buildingSpacing + roomDepth + corridorWidth;
+                shortestEndDepth = buildingLandSpacing + roomDepth + corridorWidth;
 
             else
-                shortestEndDepth = 2*buildingSpacing + roomDepth + corridorWidth;
+                shortestEndDepth = 2*buildingLandSpacing + roomDepth + corridorWidth;
             
             return shortestEndDepth;
         }
@@ -268,17 +285,17 @@ namespace TianParameterModelForOpt
         public double GetShortestBLength()
         {
             if(this.isABoundageLand == true)
-                return 5 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing;
+                return 5 * roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
             else
-                return (5 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + (2*buildingSpacing);
+                return (5 * roomWidth) + staircaseWidth + elevatorWidth + (2* buildingLandSpacing);
         }
 
         public double GetShortestLLength()
         {
             if (this.isABoundageLand == true)
-                return 10 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing;
+                return 8 * roomWidth + staircaseWidth + elevatorWidth + roomDepth + corridorWidth + buildingLandSpacing;
             else
-                return 10 * roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + 2 * buildingSpacing;
+                return 8 * roomWidth + staircaseWidth + elevatorWidth + roomDepth + corridorWidth + 2*buildingLandSpacing;
         }
 
         public double GetShortestULength()
@@ -290,9 +307,9 @@ namespace TianParameterModelForOpt
                 buildingInterval = 13;
 
             if(this.isABoundageLand == true)
-                return buildingInterval + (2 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
+                return buildingInterval + 2 * (roomDepth + corridorWidth) + 10 * roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
             else
-                return buildingInterval + (2 * roomWidth) + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2*buildingSpacing;
+                return buildingInterval + 2 * (roomDepth + corridorWidth) + 10 * roomWidth + staircaseWidth + elevatorWidth + 2*buildingSpacing;
         }
 
         public double GetShortestOLength()
@@ -304,9 +321,9 @@ namespace TianParameterModelForOpt
                 buildingInterval = 13;
 
             if (this.isABoundageLand == true)
-                return buildingInterval + 4* roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing;
+                return buildingInterval + 2 * (roomDepth + corridorWidth) + 12* roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
             else
-                return buildingInterval + 4* roomWidth + staircaseWidth + elevatorWidth + buildingSpacing + buildingSpacing + buildingSpacing + 2 * buildingSpacing;
+                return buildingInterval + 2 * (roomDepth + corridorWidth) + 12 * roomWidth + staircaseWidth + elevatorWidth + 2*buildingLandSpacing;
         }
 
 
