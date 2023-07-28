@@ -18,12 +18,17 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Grasshopper" Version="7.13.21348.13001" IncludeAssets="compile;build" />
+    <PackageReference Include="Grasshopper" Version="7.31.23166.15001" IncludeAssets="compile;build" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="morelinq" Version="3.4.2" />
   </ItemGroup>
   
   <ItemGroup>
     <Folder Include="resources\" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   
   <ItemGroup>
@@ -54,7 +59,7 @@
   </ItemGroup>
   
   <PropertyGroup Condition="$(Configuration) == 'Debug' AND $([MSBuild]::IsOSPlatform(Windows))">
-    <StartProgram>D:\PROSW\rhino7\System\Rhino.exe</StartProgram>
+    <StartProgram>D:\PROSW\Rhino 7\System\Rhino.exe</StartProgram>
     <StartArguments></StartArguments>
     <StartAction>Program</StartAction>
   </PropertyGroup>

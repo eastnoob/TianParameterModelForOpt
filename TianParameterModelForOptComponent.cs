@@ -101,6 +101,7 @@ namespace TianParameterModelForOpt
             pManager.AddVectorParameter(Name = "AllFloorsPath", NickName = "AFP", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
 
             pManager.AddBrepParameter(Name = "SingleBlocks", NickName = "SB", Description = "AllGroundFloorsPaths", GH_ParamAccess.list);
+            pManager.AddBrepParameter(Name = "JudgeBlocks", NickName = "JB", Description = "AllJudgeBlockForALand", GH_ParamAccess.list);
             //-----------------------------------------------------------------------------------------------------
 
             // --- Economic indicators ---，用于标识下方的节点为经济指标，无实际意义
@@ -166,6 +167,9 @@ namespace TianParameterModelForOpt
             List<List<Brep>> allBuildings = new List<List<Brep>>();
             // 绿地图形
             List<Brep> allGreenLand = new List<Brep>();
+
+            // 优化体
+            List<Brep>judgeBlocks = new List<Brep>(); 
 
             // == 参数
             // 基底面积
@@ -261,57 +265,143 @@ namespace TianParameterModelForOpt
                     Trace.WriteLine("Floor number: " + floorNum[landIndex]);
 
                     // 初始化building
-                    Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
+                    try
+                    {
+                        Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
 
+                        //// 装载保存
+                        allBuildings.Add(thisBuilding.allFloors);
+
+                        // 保存JudgeList
+                        judgeBlocks.Add(thisBuilding.judgeBrep[0]);
+
+                        // 绿地
+                        GreenLand thisGreenLand = new GreenLand(thisLand, roomWidth);
+                        allGreenLand.Add(thisGreenLand.greenLandBrep);
+
+                        // 面积计算
+                        // 不生成的情况下
+                        if (thisBuilding.allFloors == null || thisBuilding.bottomSurface == null)
+                        {
+                            Console.WriteLine("该地块不能生成");
+                            totalBuildingArea += 0;
+                            totalConstructArea += 0;
+                            roomNum += 0;
+                            totalGreenLandArea += thisGreenLand.greenLandArea;
+                        }
+                        else
+                        {
+                            // 建筑基底面积（单个）
+                            totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
+                            //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+
+                            // 建造面积（单个
+                            totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
+                            //double constructArea = buildingArea * floorNum[index];
+
+                            // 绿地面积(单个)
+                            totalGreenLandArea += thisGreenLand.greenLandArea;
+                            //double greenLandArea = greenLand.greenLandArea;
+
+                            // 房间数量（单个）
+                            roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                        }
+
+                    }
+                    catch (Exception ex)
+                    {
+                        //// 装载保存
+                        allBuildings.Add(new List<Brep>());
+
+                        // 保存JudgeList
+                        judgeBlocks.Add(null);
+
+                        // 绿地
+                        GreenLand greenLandException = new GreenLand(thisLand, roomWidth);
+                        allGreenLand.Add(greenLandException.greenLandBrep);
+
+                        // 面积计算
+                        // 不生成的情况下
+
+                        Console.WriteLine("该地块不能生成");
+                        totalBuildingArea += 0;
+                        totalConstructArea += 0;
+                        roomNum += 0;
+                        totalGreenLandArea += greenLandException.greenLandArea;
+
+                        landIndex++;
+
+                        continue;
+                    }
+
+                    ////-----------------------------------原有的程序-----------------------------------
+
+                    //Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
+
+                    ////allBuildings.Add(thisBuilding.allFloors);
+
+                    ////// ------------------------临时变量------------------------
+                    ////Brep aaa = thisBuilding.judgeBrep;
+                    ////Brep[] bbb =
+                    ////allFloors.Add(aaa);
+
+                    ////Brep[] allBreps = thisBuilding.allFloors;
+                    ////List<Brep> allBreps = thisBuilding.allFloors;
+                    ////allFloors.AddRange(allBreps);
+
+                    ////singleBlocks.AddRange(thisBuilding.brepOfTheBuilding);
+
+                    ////singleBlocks.AddRange(thisBuilding.singleBlocks);
+
+                    //// --------------------------------------原有程序完-------------------------------------
+
+                    ////Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
+
+                    ////// 装载保存
                     //allBuildings.Add(thisBuilding.allFloors);
 
-                    //// ------------------------临时变量------------------------
-                    //Brep aaa = thisBuilding.judgeBrep;
-                    //Brep[] bbb =
-                    //allFloors.Add(aaa);
-
-                    //Brep[] allBreps = thisBuilding.allFloors;
-                    //List<Brep> allBreps = thisBuilding.allFloors;
-                    //allFloors.AddRange(allBreps);
-
-                    //singleBlocks.AddRange(thisBuilding.brepOfTheBuilding);
-
-                    //singleBlocks.AddRange(thisBuilding.singleBlocks);
-
-
-                    //// 装载保存
-                    allBuildings.Add(thisBuilding.allFloors);
+                    //// 保存JudgeList
+                    //judgeBlocks.Add(thisBuilding.judgeBrep[0]);
 
                     //// 绿地
                     //GreenLand greenLand = new GreenLand(thisLand, roomWidth);
                     //allGreenLand.Add(greenLand.greenLandBrep);
 
+                    //// 面积计算
+                    //// 不生成的情况下
+                    //if(thisBuilding.allFloors == null || thisBuilding.bottomSurface == null)
+                    //{
+                    //    Console.WriteLine("该地块不能生成");
+                    //    totalBuildingArea += 0;
+                    //    totalConstructArea += 0;
+                    //    roomNum += 0;
+                    //    totalGreenLandArea += greenLand.greenLandArea;
+                    //}
+                    //else
+                    //{
+                    //    // 建筑基底面积（单个）
+                    //    totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
+                    //    //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
 
-                    //// 建筑基底面积（单个）
-                    //totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
-                    ////double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+                    //    // 建造面积（单个
+                    //    totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
+                    //    //double constructArea = buildingArea * floorNum[index];
 
-                    //// 建造面积（单个
-                    //totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
-                    ////double constructArea = buildingArea * floorNum[index];
+                    //    // 绿地面积(单个)
+                    //    totalGreenLandArea += greenLand.greenLandArea;
+                    //    //double greenLandArea = greenLand.greenLandArea;
 
-                    //// 绿地面积(单个)
-                    //totalGreenLandArea += greenLand.greenLandArea;
-                    ////double greenLandArea = greenLand.greenLandArea;
+                    //    // 房间数量（单个）
+                    //    roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                    //}
 
-                    //// 房间数量（单个）
-                    //roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+
 
                     //// ---------------------临时变量---------------------
                     //allFloorsPlanes.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Keys.ToList());
                     //allFloorsPaths.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Values.ToList());
 
                 }
-
-
-
-
-                /*-------------------------------------------指标--------------------------------------------------------*/
 
 
                 landIndex ++;
@@ -365,6 +455,8 @@ namespace TianParameterModelForOpt
             DA.SetDataList("AllFloorsPath", allFloorsPaths);
             DA.SetDataList("SingleBlocks", singleBlocks);
 
+            DA.SetDataList("JudgeBlocks", judgeBlocks);
+
             Trace.Close();
 
         }
@@ -381,7 +473,7 @@ namespace TianParameterModelForOpt
             get
             {
                 // 更改这个路径到你的图标文件路径
-                return new System.Drawing.Bitmap("E:\\projects\\ParametricModelForOptimization\\TianParameterModelForOpt\\resources\\Iconarchive-Gift-Red-3-Gift.32.png");
+                return new System.Drawing.Bitmap("D:\\Github\\TianParameterModelForOpt\\resources\\Iconarchive-Gift-Red-3-Gift.32.png");
             }
         }
 

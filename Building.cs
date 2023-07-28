@@ -62,7 +62,8 @@ namespace TianParameterModelForOpt
         public Brep[] brepOfTheBuilding;
         public Brep[] judgeBrepArray;
         public List<Brep> allFloors;
-
+        public List<Brep> allUnjugedFloors;
+        public Brep[] judgeBrep;
 
         // 构造器，传入Land类的land，楼层高度，楼层数量，和楼层平面图
         public Building(Land land, double groundFloorHeight, double standardFloorHeight, int floorNum/*, Curve floorSketchs*/)
@@ -279,12 +280,30 @@ namespace TianParameterModelForOpt
                 }
             }
 
+            sideBreps.RemoveAll(item => item == null);
+
             Brep[] finalBrep;
+
 
             Brep[] solidBreps = Brep.CreateBooleanUnion(sideBreps, 0.01);
 
+            //// 尝试先处理单个再组合
+            //Judge judgeBrep = new Judge(curveWithOffsetedResults, land);
 
-            solidBreps = solidBreps.Where(item => item != null).ToArray();
+            ////return judgeBrep.CreateJudgeBrep();
+            //List<Brep> repairedFinalBrep = new List<Brep>();
+
+            //foreach(Brep sideBrench in sideBreps) {
+            //    Brep repaired = judgeBrep.RepairFloorBlock(sideBrench);
+            //    repairedFinalBrep.Add(repaired);
+            //}
+
+            //Brep[] solidBreps = Brep.CreateBooleanUnion(repairedFinalBrep, 0.01);
+            //// 处理结束
+
+
+            //solidBreps = solidBreps.Where(item => item != null).ToArray();
+
             endBreps.RemoveAll(item => item == null);
 
             foreach (Brep brep in solidBreps)
@@ -339,6 +358,8 @@ namespace TianParameterModelForOpt
                 finalBrep = new Brep[] { Find.FindTheLargestBrep(finalBrep) };
 
             else { }
+
+            this.judgeBrep = new Judge(curveWithOffsetedResults, land).CreateJudgeBrep();
 
             //return finalBrep;
             Judge judgeBrep = new Judge(curveWithOffsetedResults, land);
@@ -547,7 +568,7 @@ namespace TianParameterModelForOpt
             //List <Curve> floors = new List<Curve> { floorSketch };
             // 单层楼的面积
             double areaOfSingleFloor = 0;
-            if (bottomSurface == null)
+            if (this.bottomSurface != null)
                 areaOfSingleFloor = AreaMassProperties.Compute(bottomSurface).Area;
 
 

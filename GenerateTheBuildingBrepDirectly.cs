@@ -6,9 +6,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Plane = Rhino.Geometry.Plane;
 
 namespace TianParameterModelForOpt
 {
@@ -152,7 +155,7 @@ namespace TianParameterModelForOpt
 
         // 第三部，生成box
 
-        public static Brep CreateBox(Plane plane, double xLength, double yLength, double zHight)
+        public static Brep CreateBox(Rhino.Geometry.Plane plane, double xLength, double yLength, double zHight)
         {
             var xSize = new Interval(0, xLength);
             var ySize = new Interval(0, yLength);
@@ -225,14 +228,36 @@ namespace TianParameterModelForOpt
           
 
             // 挤出JudgeCurve为实体, 挤出的长度是buildingHeight
-            var extrude = Extrusion.Create(judgeCurve, (Plane.WorldXY.Normal * 100).Length, true).ToBrep();
-            extrude.Transform(Transform.Translation(0, 0, buildingHeight/2));
+            Brep baseSurf = Brep.CreatePlanarBreps(judgeCurve, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance)[0];
+            //var extrude = Extrusion.Create(baseSurf[0], (Plane.WorldXY.Normal * 100).Length, true).ToBrep();
+            //var extrude = Extrusion.Create(baseSurf,100, true).ToBrep();
 
-            if(extrude.IsSolid == false)
+
+            var extrude = Extrusion.Create(judgeCurve, (Vector3d.ZAxis * 100).Length, true).ToBrep();
+
+
+            // 计算Brep对象的面积和质心
+            Point3d centroidOfJudgeBrep = AreaMassProperties.Compute(extrude).Centroid;
+
+
+            // 如果upperFace的起点Z坐标大于0，则extrude向下移动
+            if (centroidOfJudgeBrep.Z > 0){ extrude.Transform(Transform.Translation(new Vector3d(0, 0, -buildingHeight / 2))); }
+            else { extrude.Transform(Transform.Translation((new Vector3d(0, 0, buildingHeight / 2)))); }
+
+            if (extrude.IsSolid == false)
             {
                 extrude.CapPlanarHoles(0.01);
             }
+
+
             return extrude;
+            //extrude.Transform(Transform.Translation(0, 0, buildingHeight/2));
+
+            //if(extrude.IsSolid == false)
+            //{
+            //    extrude.CapPlanarHoles(0.01);
+            //}
+            //return extrude;
 
 
 

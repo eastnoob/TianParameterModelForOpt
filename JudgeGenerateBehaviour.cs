@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Net;
 using System.Collections;
+using MoreLinq;
 //using MoreLinq;
 
 
@@ -67,99 +68,79 @@ namespace TianParameterModelForOpt
                     return initialCondition;
                 }
 
-                else if (directionAndLengths.Max(x => x.Value) >= shortestBLength)
+
+                else if (shortestBLength <= directionAndLengths.Max(x => x.Value)
+                        && directionAndLengths.Max(x => x.Value) < shortestLLength)
                 {
-                
                     // TODO 记录日志：地块可以生成
-
-                    // 如果此时最短边超过了shortestLandLength, 但是没超过shortestLLength, 
-                    if (directionAndLengths.Min(x => x.Value) < shortestLLength)
-                    {
-                        // 如果brunch的长度达不到，就是一个B
-                        if (directionAndLengths.Min(x => x.Value) < shortestBrunchLength)
-                            buildingType = "B";
-                        // 如果达到了，那么L起步
-                        else
-                        {
-                            // 如果最长边不足以构成L，则将"B"加入到initialCondition中
-                            if (directionAndLengths.Max(x => x.Value) < shortestLLength)
-                                buildingType = "B";
-                            //AddInToJudgeList(initialCondition, "B");
-                            // 如果最长边足以构成L
-                            else if (directionAndLengths.Max(x => x.Value) >= shortestLLength)
-                            {
-                                // 且足以构成U，则将"U"加入到initialCondition中
-                                if (directionAndLengths.Max(x => x.Value) >= shortestULength)
-                                    buildingType = "U";
-                                //AddInToJudgeList(initialCondition, "U");
-
-                                // 否则将"L"加入到initialCondition中
-                                else
-                                    buildingType = "L";
-                                //AddInToJudgeList(initialCondition, "L");
-                            }
-                        }
-
-                    }
-
-                    // 如果此时最短边超过了L,
-                    else if (directionAndLengths.Min(x => x.Value) >= shortestLLength)
-                    {
-                        // 但是没超过U
-                        if (directionAndLengths.Min(x => x.Value) < shortestULength)
-                        {
-                            // 如果最长边已经超过了L，但是没超过U，则将"L"加入到initialCondition中
-                            if (directionAndLengths.Max(x => x.Value) < shortestULength)
-                            {
-                                if (directionAndLengths.Min(x => x.Value) < shortestBrunchLength)
-                                    buildingType = "B";
-                                else
-                                    buildingType = "L";
-                            }
-
-                            // 否则为U
-                            else
-                            {
-                                if (directionAndLengths.Min(x => x.Value) < shortestLLength)
-                                    buildingType = "B";
-                                else
-                                    buildingType = "U ";
-                            }
-                                //AddInToJudgeList(initialCondition, "U");
-                                buildingType = "U";
-                        }
-
-                        // 如果此时最短边超过了U是，
-                        else if (directionAndLengths.Min(x => x.Value) >= shortestULength)
-                        {
-                            // 但还没到O
-                            if (directionAndLengths.Min(x => x.Value) < shortestOLength)
-                                if(directionAndLengths.Min(x => x.Value) < shortestBrunchLength) { buildingType = "B";}
-                                else
-                                {
-                                    buildingType = "U";
-                                }
-                                //AddInToJudgeList(initialCondition, "U");
-
-                            else
-                                //AddInToJudgeList(initialCondition, "O");
-                                buildingType = "O";
-
-                            //if (directionAndLengths.Max(x => x.Value) < shortestOLength)
-                            //    AddInToJudgeList(initialCondition, "U");
-                            //else if (directionAndLengths.Max(x => x.Value) >= shortestOLength)
-                            //    AddInToJudgeList(initialCondition, "O");
-                        }
-
-                        else
-                        {
-                            //AddInToJudgeList(initialCondition, "B");
-                            buildingType = "B";
-                        }
-                    }
+                    if (directionAndLengths.Min(x => x.Value) <= shortestBrunchLength)
+                        buildingType = "B";
+                    else if (shortestBrunchLength < directionAndLengths.Min(x => x.Value)
+                             && directionAndLengths.Min(x => x.Value) <= shortestBLength)
+                        buildingType = "B";
+                    else if (shortestBLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestLLength)
+                        buildingType = "B";
                 }
 
+                else if((shortestLLength <= directionAndLengths.Max(x => x.Value)
+                        && directionAndLengths.Max(x => x.Value) < shortestULength))
+                {
+                    if (directionAndLengths.Min(x => x.Value) <= shortestBrunchLength)
+                        buildingType = "B";
+                    else if (shortestBrunchLength < directionAndLengths.Min(x => x.Value)
+                             && directionAndLengths.Min(x => x.Value) <= shortestBLength)
+                        buildingType = "L";
+                    else if (shortestBLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestLLength)
+                        buildingType = "L";
+                    else if (shortestLLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestULength)
+                        buildingType = "U";
+                }
+
+                else if ((shortestULength <= directionAndLengths.Max(x => x.Value)
+                         && directionAndLengths.Max(x => x.Value) < shortestOLength))
+                {
+                    if (directionAndLengths.Min(x => x.Value) <= shortestBrunchLength)
+                        buildingType = "B";
+                    else if (shortestBrunchLength < directionAndLengths.Min(x => x.Value)
+                             && directionAndLengths.Min(x => x.Value) <= shortestBLength)
+                        buildingType = "L";
+                    else if (shortestBLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestLLength)
+                        buildingType = "L";
+                    else if (shortestLLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestULength)
+                        buildingType = "U";
+                    else if (shortestULength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestOLength)
+                        buildingType = "U";
+                }
+
+                else if (shortestOLength <= directionAndLengths.Max(x => x.Value))
+                {
+                    if (directionAndLengths.Min(x => x.Value) <= shortestBrunchLength)
+                        buildingType = "B";
+                    else if (shortestBrunchLength < directionAndLengths.Min(x => x.Value)
+                             && directionAndLengths.Min(x => x.Value) <= shortestBLength)
+                        buildingType = "L";
+                    else if (shortestBLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestLLength)
+                        buildingType = "U";
+                    else if (shortestLLength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestULength)
+                        buildingType = "U";
+                    else if (shortestULength < directionAndLengths.Min(x => x.Value)
+                            && directionAndLengths.Min(x => x.Value) <= shortestOLength)
+                        buildingType = "U";
+                    else if (shortestOLength < directionAndLengths.Min(x => x.Value))
+                        buildingType = "O";
+                }
             }
+
+
+        
 
             // --------------------------------------------- 再判断方向---------------------------------------------------
 
@@ -216,7 +197,6 @@ namespace TianParameterModelForOpt
             directionWithScore[maxStrList[0]] += 1;
 
 
-
             // 优先级A：在哪个方向区域里
             //AddInToJudgeList(initialCondition, ew);
             directionWithScore[ew] += 1;
@@ -224,6 +204,33 @@ namespace TianParameterModelForOpt
             //AddInToJudgeList(initialCondition, ns);
             directionWithScore[ns] += 1;
 
+            // 增加对B的避险
+            if(buildingType == "B")
+            {
+                var nsList = new string[2] { "north", "south" };
+                var ewList = new string[2] { "east", "west" };
+
+                if (maxStrList.Count != 1)// 两条边一样长
+                {
+                    //此时要取消其长度权重，改为方向权重
+                    // 如果长边在n或者s里面，那么就不用管谁长，直接管在哪个区里面就行
+                    
+                    if (maxStrList.Contains(nsList[0]) || maxStrList.Contains(nsList[1]))
+                    {
+
+                        if (maxStrList.Contains(ns)) { directionWithScore[ns] += 1; }
+                    }
+                    else if (maxStrList.Contains(ewList[0]) || maxStrList.Contains(ewList[1]))
+                    {
+                        if (maxStrList.Contains(ew)) { directionWithScore[ew] += 1; }
+                    }
+                }
+                else //证明有一条边最长，就按照最长的来就行
+                {
+                    directionWithScore[maxStrList[0]] += 1;
+                }
+
+                }
 
             // ---------------------------------------- 检查与纠错 -----------------------------------------------------
 
