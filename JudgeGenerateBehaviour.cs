@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Collections;
 using MoreLinq;
+using Rhino.Input.Custom;
 //using MoreLinq;
 
 
@@ -33,6 +34,7 @@ namespace TianParameterModelForOpt
 
         public static List<string> DetermineBuildingTypeOfTheLand(List<string> boundageDirections,
                                                         Dictionary<string, double> directionAndLengths,
+                                                        Curve landCurve,
                                                         string ew, string ns,
                                                         double shortestLandDepth,
                                                         double shortestBrunchLength,
@@ -96,7 +98,7 @@ namespace TianParameterModelForOpt
                         buildingType = "L";
                     else if (shortestLLength < directionAndLengths.Min(x => x.Value)
                             && directionAndLengths.Min(x => x.Value) <= shortestULength)
-                        buildingType = "U";
+                        buildingType = "L";
                 }
 
                 else if ((shortestULength <= directionAndLengths.Max(x => x.Value)
@@ -158,7 +160,7 @@ namespace TianParameterModelForOpt
             if (boundageDirections.Count != 0)
             {
                 foreach (var direction in boundageDirections)
-                    directionWithScore[direction] += 1;
+                    directionWithScore[direction] += 2;
                 // 将boundageDirections所有元素加入initialCondition
                 //initialCondition.AddRange(boundageDirections);
             }
@@ -194,21 +196,97 @@ namespace TianParameterModelForOpt
                 }
             }
             //AddInToJudgeList(initialCondition, maxStrList[0]);
-            directionWithScore[maxStrList[0]] += 1;
+            directionWithScore[maxStrList[0]] += 2;
 
 
             // 优先级A：在哪个方向区域里
             //AddInToJudgeList(initialCondition, ew);
-            directionWithScore[ew] += 1;
+            directionWithScore[ew] += 2;
 
             //AddInToJudgeList(initialCondition, ns);
-            directionWithScore[ns] += 1;
+            directionWithScore[ns] += 2;
+
+
+            // 增加长短避险
+            //建立landcurve 的boundingbox
+            var landCurveBoundingBox = landCurve.GetBoundingBox(Plane.WorldXY);
+            // 如果boundbox的X比Y长
+            if ((landCurveBoundingBox.Max.X - landCurveBoundingBox.Min.X) > 2 * (landCurveBoundingBox.Max.Y - landCurveBoundingBox.Min.Y))
+            {
+                //directionWithScore[maxStrList[0]] += 2;
+                directionWithScore[ns] += 2;
+            }
+            else
+            {
+                directionWithScore[ew] += 2;
+            }
+
+            //// 增加对U的避险
+            //if (buildingType == "U")
+            //{
+
+            //    //建立landcurve 的boundingbox
+            //    var landCurveBoundingBox = landCurve.GetBoundingBox(Plane.WorldXY);
+            //    // 如果boundbox的X比Y长
+            //    if((landCurveBoundingBox.Max.X-landCurveBoundingBox.Min.X) > 2* (landCurveBoundingBox.Max.Y - landCurveBoundingBox.Min.Y))
+            //    {
+            //        //directionWithScore[maxStrList[0]] += 2;
+            //        directionWithScore[ns] += 2;
+            //    }
+            //    else
+            //    {
+            //        directionWithScore[ew] += 2;
+            //    }
+
+            //}
 
             // 增加对B的避险
             if(buildingType == "B")
             {
                 var nsList = new string[2] { "north", "south" };
                 var ewList = new string[2] { "east", "west" };
+
+
+                //if (directionWithScore[nsList[0]] == directionWithScore[nsList[1]])
+                //{
+                //    directionWithScore[nsList[0]] -= 1;
+                //    directionWithScore[nsList[1]] -= 1;
+                //}
+
+                //if (directionWithScore[ewList[0]] == directionWithScore[ewList[1]])
+                //{
+                //    directionWithScore[ewList[0]] -= 1;
+                //    directionWithScore[ewList[1]] -= 1;
+                //}
+
+                // 判断对边
+
+                foreach (var nsString in nsList)
+                {
+                    if (directionAndLengths[ewList[0]] >= 2* directionAndLengths[nsString])
+                    {
+                        directionWithScore[nsString] -= 2;
+                    }
+
+                    else if (directionAndLengths[ewList[1]] >= 2 * directionAndLengths[nsString])
+                    {
+                        directionWithScore[nsString] -= 2;
+                    }
+                }
+
+                foreach (var ewString in ewList)
+                {
+                    if (directionAndLengths[nsList[0]] >= 2 * directionAndLengths[ewString])
+                    {
+                        directionWithScore[ewString] -= 2;
+                    }
+
+                    else if (directionAndLengths[nsList[1]] >= 2 * directionAndLengths[ewString])
+                    {
+                        directionWithScore[ewString] -= 2;
+                    }
+                }
+
 
                 if (maxStrList.Count != 1)// 两条边一样长
                 {
@@ -217,17 +295,16 @@ namespace TianParameterModelForOpt
                     
                     if (maxStrList.Contains(nsList[0]) || maxStrList.Contains(nsList[1]))
                     {
-
-                        if (maxStrList.Contains(ns)) { directionWithScore[ns] += 1; }
+                        if (maxStrList.Contains(ns)) { directionWithScore[ns] += 2; }
                     }
                     else if (maxStrList.Contains(ewList[0]) || maxStrList.Contains(ewList[1]))
                     {
-                        if (maxStrList.Contains(ew)) { directionWithScore[ew] += 1; }
+                        if (maxStrList.Contains(ew)) { directionWithScore[ew] += 2; }
                     }
                 }
                 else //证明有一条边最长，就按照最长的来就行
                 {
-                    directionWithScore[maxStrList[0]] += 1;
+                    directionWithScore[maxStrList[0]] += 2;
                 }
 
                 }
@@ -406,6 +483,7 @@ namespace TianParameterModelForOpt
             // 边分为boundage和非boundage，二者之间要进行区别
             // land具有多个属性，需要根据每个属性决定各个边的行为
             // 在condition中的方向的所有边采取edge的偏移方式，不在的则采用end的偏移方式
+            
 
             // 四个方向和键，和四个空的字符串
             Dictionary<string, string> edgeProcessCondition = new Dictionary<string, string>()
@@ -418,7 +496,7 @@ namespace TianParameterModelForOpt
 
             /*------------------------------先根据condition判断四边的行为------------------------------------*/
 
-            foreach (string direction in edgeProcessCondition.Keys.ToList())
+            foreach (string direction in new string[] {"north", "south", "east", "west"})
             {
                 //Curve emptyCurve = new Polyline().ToNurbsCurve();
                 //emptyCurve.UserData.Add("Identifier", 1);
@@ -442,8 +520,19 @@ namespace TianParameterModelForOpt
                     edgeProcessCondition[direction] += "-boundage";
             }
 
-
-
+            // 判断如果是B，那么基准边的对边不偏移
+            if (condition.Contains("B"))
+            {
+                // 如果是B，那么基准边的对边不偏移
+                if (condition.Contains("north"))
+                    edgeProcessCondition["south"] = "end-boundage";
+                else if (condition.Contains("south"))
+                    edgeProcessCondition["north"] = "end-boundage";
+                else if (condition.Contains("east"))
+                    edgeProcessCondition["west"] = "end-boundage";
+                else if (condition.Contains("west"))
+                    edgeProcessCondition["east"] = "end-boundage";
+            }
 
             return edgeProcessCondition;
 

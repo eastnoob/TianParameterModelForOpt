@@ -128,22 +128,22 @@ namespace TianParameterModelForOpt
         /// 1. edge类：两条<br/>
         /// 2. boundage类：一条<br/>
         /// </returns>
-        public static List<Curve> EdgeProcessor(Curve edge, Curve landCurve, double buildingDepth, double buildingSpacing, string condition = "edge")
+ /*       public static List<Curve> EdgeProcessor(Curve edge, Curve landCurve, double buildingDepth, double buildingSpacing, string condition = "edge")
         {
             // double buildingLandSpacing, 
             // 储存偏移后的边缘
             double realBuildingSpacingPara = buildingSpacing/2;
             List<Curve> spliters = new List<Curve>();
 
-            /*  ------------------------------------------------ EDGE --------------------------------------------------------*/
+            *//*  ------------------------------------------------ EDGE --------------------------------------------------------*//*
 
             if (condition == "edge") // edge，普通非boundage边缘，偏移两次，形成体块的主体
             {
 
-                spliters.AddRange(Offset.offsetSideCurve(edge, landCurve, buildingSpacing, buildingDepth));
+                spliters.AddRange(Offset.offsetSideCurve(edge, landCurve, realBuildingSpacingPara, buildingDepth));
 
             }
-            /*--------------------------------------------- Boundage ------------------------------------------------------*/
+            *//*--------------------------------------------- Boundage ------------------------------------------------------*//*
 
             else if (condition == "edge-boundage") // boundage，boundage边缘，偏移一次，第一次与边缘重合，第二次便宜建筑深度，形成体块的主体
             {
@@ -152,7 +152,7 @@ namespace TianParameterModelForOpt
 
             }
 
-            /*----------------------------------------------END BOUNDAGE--------------------------------------------------*/
+            *//*----------------------------------------------END BOUNDAGE--------------------------------------------------*//*
 
             else if (condition == "end_boundage") // boundage，boundage边缘，不偏移，与边缘重合
             {
@@ -160,7 +160,7 @@ namespace TianParameterModelForOpt
                 spliters.Add(edge);
             }
 
-            /*----------------------------------------------END BOUNDING-------------------------------------------------*/
+            *//*----------------------------------------------END BOUNDING-------------------------------------------------*//*
 
             // ? 想不起来了，暂时搁置
 
@@ -177,14 +177,14 @@ namespace TianParameterModelForOpt
             //    }
             //}
 
-            /*----------------------------------------------END SPACING-------------------------------------------------*/
+            *//*----------------------------------------------END SPACING-------------------------------------------------*//*
 
             else if (condition == "end") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
             {
-                spliters.AddRange(Offset.offsetEndCurve(edge, landCurve, buildingSpacing));
+                spliters.AddRange(Offset.offsetEndCurve(edge, landCurve, realBuildingSpacingPara));
             }
 
-            /*----------------------------------------------END SELF SPACING-------------------------------------------------*/
+            *//*----------------------------------------------END SELF SPACING-------------------------------------------------*//*
 
             else if (condition == "end_selfspacing")// end_self_spacing，偏移2次但是只偏移一个spacing的距离，功能忘记，先定义出来
             {
@@ -193,10 +193,10 @@ namespace TianParameterModelForOpt
             }
 
             return spliters;
-        }
+        }*/
 
 
-        public static Curve EdgeProcessor(Curve edge, Curve landCurve, double buildingSpacing, string condition = "edge")
+        public static Curve EdgeProcessor(Curve edge, Curve landCurve, double buildingSpacing, List<Curve> boundage, string condition = "edge")
         {
             // double buildingLandSpacing, 
             // 储存偏移后的边缘
@@ -216,8 +216,15 @@ namespace TianParameterModelForOpt
 
             else if (condition == "edge-boundage") // 不用偏移，本身就是基准线
             {
-                return edge;
-                spliters.Add(edge);
+                if(boundage.Contains(edge))// 这是真的boundage
+                    return edge;
+
+                else// 这是假的boundage，采用edge方法处理
+                {
+                    Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, realBuildingSpacingPara, landCurve);
+                    return outsideCurve;
+                }
+                //spliters.Add(edge);
                 //spliters.AddRange(Offset.offsetSideCurve(edge, landCurve, 0, buildingDepth));
 
             }
@@ -226,6 +233,17 @@ namespace TianParameterModelForOpt
 
             else if (condition == "end-boundage") // boundage，boundage边缘，不偏移，与边缘重合
             {
+                return edge; 
+                if (boundage.Contains(edge))// 这是真的boundage
+                    return edge;
+
+                else// 这是假的boundage，采用edge方法处理
+                {
+                    Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, buildingSpacing, landCurve);
+                    return outsideCurve;
+                }
+
+
                 return edge;
                 // 不偏移
                 spliters.Add(edge);
@@ -235,10 +253,10 @@ namespace TianParameterModelForOpt
 
             else if (condition == "end") // end_spacing，endb边缘，但是end不在boundage上，偏移一次
             {
-                
-                //Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, buildingSpacing, landCurve);
+
+                Curve outsideCurve = Offset.OffsetTowardsRightDirection(edge, realBuildingSpacingPara, landCurve);
                 //return outsideCurve;
-                return edge;
+                return outsideCurve;
                 //spliters.AddRange(Offset.offsetEndCurve(edge, landCurve, buildingSpacing));
             }
 
@@ -250,7 +268,7 @@ namespace TianParameterModelForOpt
 
         // ****** 核心
 
-        public static Dictionary<Curve, Curve> DrawSketchOfABuilding(Land land, out Dictionary<string, string> offsetBehavioursOfLandcurves/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
+        public static Dictionary<Curve, Curve> DrawSketchOfABuilding(Land land, out Dictionary<string, string> offsetBehavioursOfDirections/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
         {
             /*--------------------------------------------材料--------------------------------------------*/
             bool boundageOrNot = land.boundageOrNot;
@@ -294,19 +312,29 @@ namespace TianParameterModelForOpt
             Dictionary<Curve, Curve> curveWithOffsetedResults = new Dictionary<Curve, Curve>();
 
             // 获得四边的condition
-            offsetBehavioursOfLandcurves = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
+            offsetBehavioursOfDirections = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
+
+            //对于方向结果进行纠错
+            var boundage = new List<Curve>();
+            foreach (KeyValuePair<string, List<Curve>> pair in land.onBoundage)
+            {
+                boundage.AddRange(pair.Value);
+            }
+
 
 
             // 遍历每一个方向
-            foreach (string direction in offsetBehavioursOfLandcurves.Keys)
+            foreach (string direction in offsetBehavioursOfDirections.Keys)
             {
                 // 遍历每一个方向的所有原始边
                 foreach (Curve originalEdge in dispatchedEdges[direction])
                 {
+                    
+
                     // 对于原始边进行处理，得到单个的原始边的偏移后的边
                     //List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
                     //只生成基准线的版本
-                    Curve offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
+                    Curve offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingSpacing, boundage, offsetBehavioursOfDirections[direction]);
                     curveWithOffsetedResults[originalEdge] = offsetedEdge;
                 }
 
@@ -467,9 +495,9 @@ namespace TianParameterModelForOpt
         }
 
         //----------------------------------------------------debug用----------------------------------------------------
-        public static List<Curve> ReturnSingleBlocks(Land land/*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*/)
+/*        public static List<Curve> ReturnSingleBlocks(Land land*//*, Dictionary<string, string> edgeProcessCondition, Dictionary<string, List<Curve>> directionWithEdges*//*)
         {
-            /*--------------------------------------------材料--------------------------------------------*/
+            *//*--------------------------------------------材料--------------------------------------------*//*
             bool boundageOrNot = land.boundageOrNot;
 
 
@@ -499,11 +527,11 @@ namespace TianParameterModelForOpt
             /// *****最后要传出的这个
             Curve sketchOfABuilding = null;
 
-            /*----------------------------------------以下是方法----------------------------------------------*/
+            *//*----------------------------------------以下是方法----------------------------------------------*/
 
 
 
-            /*-------------------------------------1. 先处理Edge的偏移 -----------------------------------------*/
+            /*-------------------------------------1. 先处理Edge的偏移 -----------------------------------------*//*
 
             List<string> buildingTypeOfThisLandCurve = land.buildingTypeOfThisLandCurve;
 
@@ -521,7 +549,7 @@ namespace TianParameterModelForOpt
                 foreach (Curve originalEdge in dispatchedEdges[direction])
                 {
                     // 对于原始边进行处理，得到单个的原始边的偏移后的边
-                    List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
+                    List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
                     curveWithOffsetedResults[originalEdge] = offsetedEdge;
                 }
 
@@ -529,7 +557,7 @@ namespace TianParameterModelForOpt
                 // 开始处理intersection
             }
 
-            /*-------------------------------------2. 再处理intersection -----------------------------------------*/
+            *//*-------------------------------------2. 再处理intersection -----------------------------------------*//*
             // ******* 用来装Curve和它的intersection
             Dictionary<Curve, List<Point3d>> curveWithIntersections = new Dictionary<Curve, List<Point3d>>();
 
@@ -640,7 +668,7 @@ namespace TianParameterModelForOpt
                 }
             }
 
-            /*-------------------------------------3. 最后再生成底面图形 -----------------------------------------*/
+            *//*-------------------------------------3. 最后再生成底面图形 -----------------------------------------*//*
             // 使用intersection们来生成图形
 
             // 用来装单个边缘的对应矩形
@@ -670,6 +698,6 @@ namespace TianParameterModelForOpt
 
             return singleBlocks;
         }
-
+*/
     }
 }

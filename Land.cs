@@ -17,6 +17,11 @@ using Rhino.Commands;
 using System.Numerics;
 using System.Security.Policy;
 using System.Collections;
+using TianParameterModelForOpt._4_repair;
+using System.Diagnostics.Eventing.Reader;
+using Rhino.Render.UI;
+using Rhino.Input.Custom;
+using Rhino.UI.Controls;
 
 namespace TianParameterModelForOpt
 {
@@ -37,6 +42,8 @@ namespace TianParameterModelForOpt
         public List<Curve> zoneWestEast;
         public List<Curve> zoneNorthSouth;
 
+        // 拆开的landcurve
+        public List<Curve> landCurves;
 
         // 计算参数
         public double buildingLandSpacing;
@@ -79,6 +86,14 @@ namespace TianParameterModelForOpt
         // ## 在land生成之处获得其生成类型，为生成build做准备
         public List<string> buildingTypeOfThisLandCurve;
 
+        // 最短边，用于去错误=
+        public Curve shortestEdgeOfBase;
+        public Curve shortestEdgeOfLand;
+        public bool isOnShortest;
+
+        // 原始地块，生成绿地用
+        public Curve originalLandCurve;
+
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
         public Land (/*List<Curve> baseCurves, */ Curve setBackCurve, Curve landCurve, /*List<Curve> lands,*/
         double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing,
@@ -87,8 +102,17 @@ namespace TianParameterModelForOpt
             //this.baseCurves = baseCurves;
             //this.baseCurve = baseCurve;
             //this.lands = lands;
-            this.landCurve = landCurve;
+            //this.landCurve = landCurve;
             this.baseCurve = setBackCurve;
+
+            this.originalLandCurve = landCurve;
+            //if()
+
+            this.shortestEdgeOfBase = FindIFItsOnShortestEdge(out this.isOnShortest, out this.shortestEdgeOfLand);
+
+            //this.landCurve = RepairLand(this.originalLakcndCurve);
+
+            
             //this.baseCurve = unoffsetedBaseCurve.Offset(AreaMassProperties.Compute(unoffsetedBaseCurve).Centroid, Rhino.Geometry.Plane.WorldXY.Normal, 5, 0.001, CurveOffsetCornerStyle.Sharp)[0];
             this.roomDepth = roomDepth;
             this.roomWidth = roomWidth;
@@ -96,38 +120,116 @@ namespace TianParameterModelForOpt
             this.staircaseWidth = staircaseWidth;
             this.elevatorWidth = elevatorWidth;
             this.buildingSpacing = buildingSpacing;
-            
-            
+            this.buildingLandSpacing = buildingSpacing / 2;
+
+            // 修复land
+            this.landCurve = RepairLand(this.originalLandCurve);
+
+
+            this.zoneNorthSouth = zoneNorthSouth;
+            this.zoneWestEast = zoneWestEast;
 
             // 以下是计算属性
             this.absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
+            this.dispatchedEdges = DispatchEdgesThroughDirection(this.landCurve);
 
-
-            this.buildingLandSpacing = buildingSpacing / 2;
-            this.isABoundageLand = IsABoundageLand(landCurve, this.baseCurve, out onBoundage, out notOnBoundage, out boundageDirections);
+            this.isABoundageLand = IsABoundageLand(this.landCurve, this.baseCurve, out onBoundage, out notOnBoundage, out boundageDirections);
             
-            this.isWestOrEast = IsWestOrEast(zoneWestEast, landCurve);
-            this.isNorthOrSouth = IsNorthOrSouth(zoneNorthSouth, landCurve);
+            this.isWestOrEast = IsWestOrEast(zoneWestEast, this.landCurve);
+            this.isNorthOrSouth = IsNorthOrSouth(zoneNorthSouth, this.landCurve);
 
-            this.dispatchedEdges = DispatchEdgesThroughDirection(landCurve);
+            
 
-            this.directionAndLength = GetLengthsAndLandlines(landCurve, out fourDirectionsEdges);
+            this.directionAndLength = GetLengthsAndLandlines(this.landCurve, out fourDirectionsEdges);
 
-            this.buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(boundageDirections, directionAndLength, isWestOrEast, isNorthOrSouth, 
+
+
+            this.buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(boundageDirections, directionAndLength, landCurve, isWestOrEast, isNorthOrSouth,
                 GetShortestEndDepth(),
                 GetShortestBrunchLength(),
                 GetShortestBLength(),
                 GetShortestLLength(),
                 GetShortestULength(),
-                GetShortestOLength());
-            //this.westOrEast = IsWestOrEast(zones, landCurve);
-            //this.northOrSouth = IsNorthOrSouth(zones, landCurve);
+                GetShortestOLength()); ;
+
 
             
         }
 
 
         /*----------------------------------------类属性计算-----------------------------------------------*/
+        public Curve FindIFItsOnShortestEdge(out bool isOnShortest, out Curve shortestCurveOfLand)
+        {
+
+            List<Curve> baseCurves = new List<Curve>();
+
+            if (this.baseCurve.IsClosed)
+            {
+                Curve[] baseSegments = this.baseCurve.DuplicateSegments();
+                if (baseSegments != null && baseSegments.Length > 0)
+                {
+                    baseCurves.AddRange(baseSegments);
+                }
+            }
+            // 如果没有闭合，则先将其闭合再执行同样操作
+            else
+            {
+                Curve closedCurve = this.baseCurve.DuplicateCurve();
+                closedCurve.MakeClosed(0.001);
+                Curve[] baseSegments = closedCurve.DuplicateSegments();
+                if (baseSegments != null && baseSegments.Length > 0)
+                {
+                    baseCurves.AddRange(baseSegments);
+                }
+            }
+
+            List<Curve> curveOnShortest = new List<Curve>();
+
+            // 拆掉land
+            var landCurves = new List<Curve>();
+            Curve[] segments = this.originalLandCurve.DuplicateSegments();
+            if (segments != null && segments.Length > 0)
+            {
+                landCurves.AddRange(segments);
+            }
+
+            Curve shortest = Find.FindTheShortestCurve(baseCurves);
+            isOnShortest = false;
+
+/*            foreach (KeyValuePair<string, List<Curve>> pair in this.fourDirectionsEdges)
+            {*/
+                foreach(Curve curve in landCurves)
+                {
+                    //var startpt = curve.PointAtStart;
+                    //var endpt = curve.PointAtEnd;
+
+                    bool isOverlap = Find.CheckOverlap(shortest, curve);
+
+                    if(isOverlap == true)
+                    {
+                        isOnShortest = true;
+                        curveOnShortest.Add(curve);
+                    }
+                }
+/*            }*/
+            
+            if(isOnShortest == false)
+            {
+                shortestCurveOfLand = null;
+            }
+
+            else if (curveOnShortest.Count > 1)
+            {
+                shortestCurveOfLand = Find.FindTheShortestCurve(curveOnShortest);
+            }
+            else
+            {
+                shortestCurveOfLand = curveOnShortest[0];
+            }
+
+            // 输出最短边
+            return shortest;
+        }
 
 
         /// <summary>
@@ -144,7 +246,8 @@ namespace TianParameterModelForOpt
             out Dictionary<string, List<Curve>> notOnBoundage,
             out List<string> boundageDirections)
         {
-            var relationshipDic = DispatchEdgesThroughDirection(landCurve);
+            //var relationshipDic = DispatchEdgesThroughDirection(landCurve, this.zoneNorthSouth, this.zoneWestEast);
+            var relationshipDic = this.dispatchedEdges;
 
             // 在这一步把land的边界信息以及方向字典算出来
             //Dictionary<string, List<Curve>> onBoundage = new Dictionary<string, List<Curve>>();
@@ -215,21 +318,53 @@ namespace TianParameterModelForOpt
         // 获得封闭曲线land拆成四个方向的边界,并获得东西南北的长度
         public Dictionary<string, double> GetLengthsAndLandlines(Curve landCurve, out Dictionary<string, List<Curve>> fourDirectionsEdges)
         {
-            fourDirectionsEdges = DispatchEdgesThroughDirection(landCurve);
+            //fourDirectionsEdges = DispatchEdgesThroughDirection(landCurve);
+            fourDirectionsEdges = this.dispatchedEdges;
 
             // 获得四个方向各自所有的curve的长度之和，分别存放于一个字典中，键为方向，值为长度
             Dictionary<string, double> directionAndLengths = new Dictionary<string, double>();
 
-            foreach (var direction in fourDirectionsEdges.Keys)
-            {
-                double length = 0;
-                foreach (var edge in fourDirectionsEdges[direction])
+/*            if(isOnShortest == true)
+            {*/
+                BoundingBox bbox = landCurve.GetBoundingBox(true);
+                Point3d[] vertices = new Point3d[4];
+                vertices[0] = bbox.Corner(true, true, true); // 左下角
+                vertices[1] = bbox.Corner(false, true, true); // 右下角
+                vertices[2] = bbox.Corner(false, false, true); // 右上角
+                vertices[3] = bbox.Corner(true, false, true); // 左上角
+
+                PolylineCurve polyline = new PolylineCurve(vertices); // 创建多段线
+                polyline.MakeClosed(0.01); // 将多段线封闭
+                Curve[] segments = polyline.DuplicateSegments(); // 将多段线炸开成单独的线段对象数组
+
+                var bboxDispatched = DispatchEdgesThroughDirection(polyline);
+
+                foreach (var direction in bboxDispatched.Keys)
                 {
-                    length += edge.GetLength();
+                    double length = 0;
+                    foreach (var edge in fourDirectionsEdges[direction])
+                    {
+                        length += edge.GetLength();
+                    }
+                    directionAndLengths.Add(direction, length);
                 }
-                directionAndLengths.Add(direction, length);
+                return directionAndLengths;
+/*
             }
-            return directionAndLengths;
+            else
+            {
+                foreach (var direction in fourDirectionsEdges.Keys)
+                {
+                    double length = 0;
+                    foreach (var edge in fourDirectionsEdges[direction])
+                    {
+                        length += edge.GetLength();
+                    }
+                    directionAndLengths.Add(direction, length);
+                }
+                return directionAndLengths;
+            }*/
+
         }
 
 
@@ -273,29 +408,29 @@ namespace TianParameterModelForOpt
         public double GetShortestEndDepth(/*bool isABoundageLand*/)
         {
             double shortestEndDepth = 1.0;
-            if (this.isABoundageLand == true)
+/*            if (this.isABoundageLand == true)
                 shortestEndDepth = buildingLandSpacing + roomDepth + corridorWidth;
 
-            else
-                shortestEndDepth = 2*buildingLandSpacing + roomDepth + corridorWidth;
+            else*/
+                shortestEndDepth = 2* this.buildingLandSpacing + this.roomDepth + this.corridorWidth;
             
             return shortestEndDepth;
         }
 
         public double GetShortestBLength()
         {
-            if(this.isABoundageLand == true)
-                return 5 * roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
-            else
-                return (5 * roomWidth) + staircaseWidth + elevatorWidth + (2* buildingLandSpacing);
+/*            if(this.isABoundageLand == true)
+                return 5 * this.roomWidth + this.staircaseWidth + this.elevatorWidth + this.buildingLandSpacing;
+            else*/
+                return (5 * this.roomWidth) + this.staircaseWidth + this.elevatorWidth + (2* this.buildingLandSpacing);
         }
 
         public double GetShortestLLength()
         {
-            if (this.isABoundageLand == true)
-                return 8 * roomWidth + staircaseWidth + elevatorWidth + roomDepth + corridorWidth + buildingLandSpacing;
-            else
-                return 8 * roomWidth + staircaseWidth + elevatorWidth + roomDepth + corridorWidth + 2*buildingLandSpacing;
+/*            if (this.isABoundageLand == true)
+                return 8 * this.roomWidth + this.staircaseWidth + this.elevatorWidth + this.roomDepth + this.corridorWidth + this.buildingLandSpacing;
+            else*/
+                return 8 * this.roomWidth + this.staircaseWidth + this.elevatorWidth + this.roomDepth + this.corridorWidth + 2* this.buildingLandSpacing;
         }
 
         public double GetShortestULength()
@@ -306,9 +441,9 @@ namespace TianParameterModelForOpt
             if (buildingInterval <= 13)
                 buildingInterval = 13;
 
-            if(this.isABoundageLand == true)
+/*            if(this.isABoundageLand == true)
                 return buildingInterval + 2 * (roomDepth + corridorWidth) + 10 * roomWidth + staircaseWidth + elevatorWidth + buildingLandSpacing;
-            else
+            else*/
                 return buildingInterval + 2 * (roomDepth + corridorWidth) + 10 * roomWidth + staircaseWidth + elevatorWidth + 2*buildingSpacing;
         }
 
@@ -369,20 +504,9 @@ namespace TianParameterModelForOpt
             return landLinesLengths.Max();
         }
 
-        // 对于单个封闭线进行的分方向操作
         public Dictionary<string, List<Curve>> DispatchEdgesThroughDirection(Curve closeCurve)
         {
 
-            // 方向点
-            List<Point3d> directionPts;
-
-            // 方向线
-            List<Line> directionLines;
-
-            // 获取方向点与方向线
-            double maxEdgeLength = GetDirection(closeCurve, out directionPts, out directionLines);
-
-            // 获取每个土地块的边缘线
             // 将曲线分解为线段
             List<Curve> landCurves = new List<Curve>();
 
@@ -407,576 +531,1635 @@ namespace TianParameterModelForOpt
             }
 
 
-            // 按照方向顺序排序
-            string[] directionOrder = { "north", "south", "east", "west" };
+            double offset = 10;
 
-            // 获取边缘线数量
-            int edgeCount = landCurves.Count;
+            BoundingBox boundingBox = closeCurve.GetBoundingBox(true);
 
-            // 获取每条边缘线的中点
-            List<Point3d> edgeMidpoints = new List<Point3d>();
-            foreach (Curve landLine in landCurves)
+            double offsetOriginX = boundingBox.Diagonal.X / 3;
+            double offsetOriginY = boundingBox.Diagonal.Y / 3;
+
+            Point3d center = boundingBox.Center;
+
+            Point3d horizontalStart = new Point3d(center.X, boundingBox.Min.Y, 0);
+            Point3d horizontalEnd = new Point3d(center.X, boundingBox.Max.Y, 0);
+
+            Point3d verticalStart = new Point3d(boundingBox.Min.X, center.Y, 0);
+            Point3d verticalEnd = new Point3d(boundingBox.Max.X, center.Y, 0);
+
+            Vector3d diagonal = boundingBox.Diagonal;
+            double length = diagonal.Length;
+            double extensionFactor = length / 2.0;
+
+            Point3d horizontalStartExtended = Point3d.Add(horizontalStart, new Vector3d(horizontalStart - center) * extensionFactor);
+            Point3d horizontalEndExtended = Point3d.Add(horizontalEnd, new Vector3d(horizontalEnd - center) * extensionFactor);
+
+            Point3d verticalStartExtended = Point3d.Add(verticalStart, new Vector3d(verticalStart - center) * extensionFactor);
+            Point3d verticalEndExtended = Point3d.Add(verticalEnd, new Vector3d(verticalEnd - center) * extensionFactor);
+
+            Point3d leftStart = new Point3d(horizontalStartExtended.X - diagonal.X / 2.0 - offset, horizontalStartExtended.Y, 0);
+            Point3d leftEnd = new Point3d(horizontalEndExtended.X - diagonal.X / 2.0 - offset, horizontalEndExtended.Y, 0);
+
+            Point3d rightStart = new Point3d(horizontalStartExtended.X + diagonal.X / 2.0 + offset, horizontalStartExtended.Y, 0);
+            Point3d rightEnd = new Point3d(horizontalEndExtended.X + diagonal.X / 2.0 + offset, horizontalEndExtended.Y, 0);
+
+            Point3d topStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y + diagonal.Y / 2.0 + offset, 0);
+            Point3d topEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y + diagonal.Y / 2.0 + offset, 0);
+
+            Point3d bottomStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y - diagonal.Y / 2.0 - offset, 0);
+            Point3d bottomEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y - diagonal.Y / 2.0 - offset, 0);
+
+            // Generate the left, right, top, and bottom zones
+            Curve westZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, leftStart, leftEnd);
+            westZone.Translate(new Vector3d(-offsetOriginX, 0, 0));
+
+            Curve eastZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, rightStart, rightEnd);
+            eastZone.Translate(new Vector3d(offsetOriginX, 0, 0));
+
+            Curve northZone = GenerateZone(verticalStartExtended, verticalEndExtended, topStart, topEnd);
+            northZone.Translate(new Vector3d(0, offsetOriginY, 0));
+
+            Curve southZone = GenerateZone(verticalStartExtended, verticalEndExtended, bottomStart, bottomEnd);
+            southZone.Translate(new Vector3d(0, -offsetOriginY, 0));
+
+            // Function to generate a zone
+            Curve GenerateZone(Point3d startExtended, Point3d endExtended, Point3d start, Point3d end)
             {
-                edgeMidpoints.Add(landLine.PointAtNormalizedLength(0.5));
+                LineCurve upCurve = new LineCurve(startExtended, start);
+                LineCurve downCurve = new LineCurve(endExtended, end);
+                LineCurve startCurve = new LineCurve(startExtended, endExtended);
+                LineCurve endCurve = new LineCurve(start, end);
+
+                Curve[] curves = new Curve[] { upCurve, downCurve, startCurve, endCurve };
+
+                return Curve.JoinCurves(curves)[0];
             }
 
-            // 计算每条边缘线与方向线之间的角度
-            List<double> northAngles = new List<double>();
-            List<double> southAngles = new List<double>();
-            List<double> eastAngles = new List<double>();
-            List<double> westAngles = new List<double>();
+            var relationshipDicFour = new Dictionary<string, List<Curve>>();
+            relationshipDicFour["north"] = new List<Curve>();
+            relationshipDicFour["south"] = new List<Curve>();
+            relationshipDicFour["east"] = new List<Curve>();
+            relationshipDicFour["west"] = new List<Curve>();
 
-            foreach (Curve landLine in landCurves)
+            List<Curve> haveBeenUsed = new List<Curve>();
+
+            foreach (Curve landEdge in landCurves)
             {
-                northAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[0].Direction, landLine.TangentAtStart), 2) /Math.PI);
-                southAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[1].Direction, landLine.TangentAtStart), 2) / Math.PI);
-                eastAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[2].Direction, landLine.TangentAtStart), 2) / Math.PI);
-                westAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[3].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                Point3d startpt = landEdge.PointAtStart;
+                Point3d endpt = landEdge.PointAtEnd;
+                //Point3d midpt = landEdge.PointAtNormalizedLength(0.5);
+
+                var condition1 = northZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside;
+                var condition2 = northZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside;
+
+
+                if (/*northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && */northZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && northZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && !haveBeenUsed.Contains(landEdge))
+                {
+                    relationshipDicFour["north"].Add(landEdge);
+                    haveBeenUsed.Add(landEdge);
+                }
+                else if (/*southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && */southZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && southZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && !haveBeenUsed.Contains(landEdge))
+                {
+                    relationshipDicFour["south"].Add(landEdge);
+                    haveBeenUsed.Add(landEdge);
+                }
+                else if (/*westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    &&*/ westZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && westZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && !haveBeenUsed.Contains(landEdge))
+                {
+                    relationshipDicFour["west"].Add(landEdge);
+                    haveBeenUsed.Add(landEdge);
+                }
+                else if (/*eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && */eastZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && eastZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    && !haveBeenUsed.Contains(landEdge))
+                {
+                    relationshipDicFour["east"].Add(landEdge);
+                    haveBeenUsed.Add(landEdge);
+                }
             }
-
-            // 计算每条边缘线与方向点之间的距离
-            List<double> northDistances = new List<double>();
-            List<double> southDistances = new List<double>();
-            List<double> eastDistances = new List<double>();
-            List<double> westDistances = new List<double>();
-
-            foreach (Point3d edgeMidpoint in edgeMidpoints)
+            if (haveBeenUsed.Count == landCurves.Count)
             {
-                northDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[0]), 2));
-                southDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[1]), 2));
-                eastDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[2]), 2));
-                westDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[3]), 2));
-            }
-
-            // 如果边缘线数量小于4，则跳过
-            if (edgeCount < 4)
-            {
-                return null;
-            }
-
-            else if (edgeCount == 4)
-            {
-                var relationshipDicFour = new Dictionary<string, List<Curve>>();
-                relationshipDicFour["north"] = new List<Curve>();
-                relationshipDicFour["south"] = new List<Curve>();
-                relationshipDicFour["east"] = new List<Curve>();
-                relationshipDicFour["west"] = new List<Curve>();
-
-                relationshipDicFour["north"].Add(landCurves[northDistances.IndexOf(northDistances.Min())]);
-                relationshipDicFour["south"].Add(landCurves[southDistances.IndexOf(southDistances.Min())]);
-                relationshipDicFour["east"].Add(landCurves[eastDistances.IndexOf(eastDistances.Min())]);
-                relationshipDicFour["west"].Add(landCurves[westDistances.IndexOf(westDistances.Min())]);
-
-                /*                var relationshipDicFour = new Dictionary<string, List<Line>>();
-                                relationshipDicFour["north"] = new List<Line> { landCurves[northDistances.IndexOf(northDistances.Min())] };
-                                relationshipDicFour["south"] = new List<Line> { landCurves[southDistances.IndexOf(south_distance.Min())] };
-                                relationshipDicFour["east"] = new List<Line> { landCurves[eastDistances.IndexOf(east_distance.Min())] };
-                                relationshipDicFour["west"] = new List<Line> { landCurves[westDistances.IndexOf(west_distance.Min())] };*/
-
-
-
-                // RelationshipList is a list which contain items according to the order as [north, south, east, west]
-                // ! Might be abandoned
-                /*                var relationshipListFour = new List<Line>
-                                {
-                                    land_lines[north_distance.IndexOf(north_distance.Min())],
-                                    land_lines[south_distance.IndexOf(south_distance.Min())],
-                                    land_lines[east_distance.IndexOf(east_distance.Min())],
-                                    land_lines[west_distance.IndexOf(west_distance.Min())]
-                                };*/
-
                 return relationshipDicFour;
             }
-
-            else if (edgeCount > 4)
-            {
-                int maxLength = (int)Math.Round(maxEdgeLength);
-
-                // 分别算出符合条件的边缘线种子选手，最后再通过评分来确定其方向
-
-                List<Curve> northAppropriateEdges = new List<Curve>();
-                List<Curve> southAppropriateEdges = new List<Curve>();
-                List<Curve> eastAppropriateEdges = new List<Curve>();
-                List<Curve> westAppropriateEdges = new List<Curve>();
-
-                for (int i = 0; i < northAngles.Count; i++)
-                {
-                    if (120 > northAngles[i] && northAngles[i] >= 60)
-                    {
-                        northAppropriateEdges.Add(landCurves[i]);
-                    }
-                }
-
-                for (int i = 0; i < southAngles.Count; i++)
-                {
-                    if (120 > southAngles[i] && southAngles[i] >= 60)
-                    {
-                        southAppropriateEdges.Add(landCurves[i]);
-                    }
-                }
-
-                for (int i = 0; i < eastAngles.Count; i++)
-                {
-                    if (120 > eastAngles[i] && eastAngles[i] >= 60)
-                    {
-                        eastAppropriateEdges.Add(landCurves[i]);
-                    }
-                }
-
-                for (int i = 0; i < westAngles.Count; i++)
-                {
-                    if (120 > westAngles[i] && westAngles[i] >= 60)
-                    {
-                        westAppropriateEdges.Add(landCurves[i]);
-                    }
-                }
-
-                Dictionary<Curve, double> northAppropriateEdgesDistance = new Dictionary<Curve, double>();
-                Dictionary<Curve, double> southAppropriateEdgesDistance = new Dictionary<Curve, double>();
-                Dictionary<Curve, double> eastAppropriateEdgesDistance = new Dictionary<Curve, double>();
-                Dictionary<Curve, double> westAppropriateEdgesDistance = new Dictionary<Curve, double>();
-
-                foreach (Curve edge in northAppropriateEdges)
-                {
-                    northAppropriateEdgesDistance.Add(edge, northDistances[landCurves.IndexOf(edge)]);
-                }
-
-                foreach (Curve edge in southAppropriateEdges)
-                {
-                    southAppropriateEdgesDistance.Add(edge, southDistances[landCurves.IndexOf(edge)]);
-                }
-
-                foreach (Curve edge in eastAppropriateEdges)
-                {
-                    eastAppropriateEdgesDistance.Add(edge, eastDistances[landCurves.IndexOf(edge)]);
-                }
-
-                foreach (Curve edge in westAppropriateEdges)
-                {
-                    westAppropriateEdgesDistance.Add(edge, westDistances[landCurves.IndexOf(edge)]);
-                }
-
-                // 计算合适的角度
-
-                //Dictionary<Curve, double> northAppropriateEdgesAngle = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> southAppropriateEdgesAngle = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> eastAppropriateEdgesAngle = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> westAppropriateEdgesAngle = new Dictionary<Curve, double>();
-
-                //foreach (Curve edge in northAppropriateEdges)
-                //{
-                //    northAppropriateEdgesAngle.Add(edge, northAngles[landCurves.IndexOf(edge)]);
-                //}
-
-                //foreach (Curve edge in southAppropriateEdges)
-                //{
-                //    southAppropriateEdgesAngle.Add(edge, southAngles[landCurves.IndexOf(edge)]);
-                //}
-
-                //foreach (Curve edge in eastAppropriateEdges)
-                //{
-                //    eastAppropriateEdgesAngle.Add(edge, eastAngles[landCurves.IndexOf(edge)]);
-                //}
-
-                //foreach (Curve edge in westAppropriateEdges)
-                //{
-                //    westAppropriateEdgesAngle.Add(edge, westAngles[landCurves.IndexOf(edge)]);
-                //}
-
-                /*---------------------------以下是评分------------------------------*/
-
-                //// 评分
-                //Dictionary<Curve, double> northScore = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> southScore = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> eastScore = new Dictionary<Curve, double>();
-                //Dictionary<Curve, double> westScore = new Dictionary<Curve, double>();
-
-                //foreach (Curve edge in landCurves)
-                //{
-                //    if (northAppropriateEdges.Contains(edge))
-                //    {
-                //        northScore[edge] = SetScore(northAppropriateEdgesAngle[edge], northAppropriateEdgesDistance[edge], maxLength);
-                //    }
-
-                //    if (southAppropriateEdges.Contains(edge))
-                //    {
-                //        southScore[edge] = SetScore(southAppropriateEdgesAngle[edge], southAppropriateEdgesDistance[edge], maxLength);
-                //    }
-
-                //    if (eastAppropriateEdges.Contains(edge))
-                //    {
-                //        eastScore[edge] = SetScore(eastAppropriateEdgesAngle[edge], eastAppropriateEdgesDistance[edge], maxLength);
-                //    }
-
-                //    if (westAppropriateEdges.Contains(edge))
-                //    {
-                //        westScore[edge] = SetScore(westAppropriateEdgesAngle[edge], westAppropriateEdgesDistance[edge], maxLength);
-                //    }
-
-                //// 首次区分
-
-                //List<Curve> judgeList = new List<Curve>();
-                //List<Curve> firstCandidates = new List<Curve>();
-                //firstCandidates.AddRange(northAppropriateEdges);
-                //firstCandidates.AddRange(southAppropriateEdges);
-                //firstCandidates.AddRange(eastAppropriateEdges);
-                //firstCandidates.AddRange(westAppropriateEdges);
-
-                // 首次区分方向的结果
-                var relationshipDicFirst = new Dictionary<string, List<Curve>>()
-                {
-                    {"north", new List<Curve>() },
-                    {"south", new List<Curve>() },
-                    {"east", new List<Curve>() },
-                    {"west", new List<Curve>() }
-                };
-
-                // 挑选四个方向的AppropriateEdgesDistance最小的值所对应的key，加入到relationshipDicFirst的对应方向中
-
-                double minNorthDistance = northAppropriateEdgesDistance.Values.Min();
-                double minSouthDistance = southAppropriateEdgesDistance.Values.Min();
-                double minEastDistance = eastAppropriateEdgesDistance.Values.Min();
-                double minWestDistance = westAppropriateEdgesDistance.Values.Min();
-
-                // 通过以上的值搜索对应的key，并加入到relationshipDicFirst的对应方向中，四个方向的key值不会重复，各一个
-
-                List<Curve> judgeListFirst = new List<Curve>();
-
-                foreach (Curve appropriate in northAppropriateEdgesDistance.Keys)
-                {
-                    if (northAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
-                    {
-                        relationshipDicFirst["north"].Add(appropriate);
-                        judgeListFirst.Add(appropriate);
-                    }
-                }
-                foreach (Curve appropriate in southAppropriateEdgesDistance.Keys)
-                {
-                    if (southAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
-                    {
-                        relationshipDicFirst["south"].Add(appropriate);
-                        judgeListFirst.Add(appropriate);
-                    }
-                }
-
-                foreach (Curve appropriate in eastAppropriateEdgesDistance.Keys)
-                {
-                    if (eastAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
-                    {
-                        relationshipDicFirst["east"].Add(appropriate);
-                        judgeListFirst.Add(appropriate);
-                    }
-                }
-
-                foreach (Curve appropriate in westAppropriateEdgesDistance.Keys)
-                {
-                    if (westAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
-                    {
-                        relationshipDicFirst["west"].Add(appropriate);
-                        judgeListFirst.Add(appropriate);
-                    }
-                }
-
-                //// ------------------------ 以下方法做存档，暂时弃用 -----------------------------------------
-
-                //// 将四个方向上适宜作为第一个顶点的边添加到firstCandidates列表中
-
-                //foreach (Curve landCurve in landCurves)
-                //{
-                //    if (northScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
-                //    {
-                //        // 如果边在northScore字典中且还没有被处理过
-                //        if (northScore[landCurve] == northScore.Values.Max() && relationshipDicFirst["north"].Count == 0)
-                //        {
-                //            // 如果边的分数是northScore中最大的，并且还没有确定过north方向的第一个顶点
-                //            relationshipDicFirst["north"].Add(landCurve);
-                //            judgeList.Add(landCurve);
-                //        }
-                //    }
-
-                //    if (southScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
-                //    {
-                //        // 如果边在southScore字典中且还没有被处理过
-                //        if (southScore[landCurve] == southScore.Values.Max() && relationshipDicFirst["south"].Count == 0)
-                //        {
-                //            // 如果边的分数是southScore中最大的，并且还没有确定过south方向的第一个顶点
-                //            relationshipDicFirst["south"].Add(landCurve);
-                //            judgeList.Add(landCurve);
-                //        }
-                //    }
-
-                //    if (eastScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
-                //    {
-                //        // 如果边在eastScore字典中且还没有被处理过
-                //        if (eastScore[landCurve] == eastScore.Values.Max() && relationshipDicFirst["east"].Count == 0)
-                //        {
-                //            // 如果边的分数是eastScore中最大的，并且还没有确定过east方向的第一个顶点
-                //            relationshipDicFirst["east"].Add(landCurve);
-                //            judgeList.Add(landCurve);
-                //        }
-                //    }
-
-                //    if (westScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
-                //    {
-                //        // 如果边在westScore字典中且还没有被处理过
-                //        if (westScore[landCurve] == westScore.Values.Max() && relationshipDicFirst["west"].Count == 0)
-                //        {
-                //            // 如果边的分数是westScore中最大的，并且还没有确定过west方向的第一个顶点
-                //            relationshipDicFirst["west"].Add(landCurve);
-                //            judgeList.Add(landCurve);
-                //        }
-                //    }
-
-                // -----------------------------进行方向检查并且重新调整--------------------------
-                // 建立一个字典，四个方向为key，value是朝向四个方向的四个单位向量
-                var directionDic = new Dictionary<string, Vector3d>()
-                    {
-                        {"north", new Vector3d(0, 1, 0) },
-                        {"south", new Vector3d(0, -1, 0) },
-                        {"east", new Vector3d(1, 0, 0) },
-                        {"west", new Vector3d(-1, 0, 0) }
-                    };
-
-                // 确认现在的landCurves中所有不在judgeListFirst中的边
-                Curve[] unusedFirst = new Curve[landCurves.Count - judgeListFirst.Count];
-
-                int unusedFirstIndex = 0;
-
-                foreach (Curve curve in landCurves)
-                {
-                    if (!judgeListFirst.Contains(curve))
-                    {
-                        unusedFirst[unusedFirstIndex] = curve;
-                        unusedFirstIndex++;
-                    }
-                }
-
-                // 求出relationshipDicFirst中南北两个方向现在有的curve的中点
-                Point3d northMidPoint = new Point3d();
-                Point3d southMidPoint = new Point3d();
-
-                foreach (Curve curve in relationshipDicFirst["north"])
-                {
-                    northMidPoint = curve.PointAtNormalizedLength(0.5);
-                }
-
-                foreach (Curve curve in relationshipDicFirst["south"])
-                {
-                    southMidPoint = curve.PointAtNormalizedLength(0.5);
-                }
-
-                // 两点连线，将这条线向东向西分别拷贝一份，距离为100000，然后获得原版与拷贝结果的起止点
-                LineCurve northSouthLine = new LineCurve(northMidPoint, southMidPoint);
-
-                LineCurve eastLine = (LineCurve)northSouthLine.DuplicateCurve();
-                LineCurve westLine = (LineCurve)northSouthLine.DuplicateCurve();
-
-                //// 原版起止点
-                //Point3d originStartPoint = northMidPoint;
-                //Point3d originEndPoint = southMidPoint;
-
-                //将两条线向东向西分别复制一份，距离为100000，然后获得原版与拷贝结果的起止点
-                LineCurve eastCup = (LineCurve)northSouthLine.DuplicateCurve();
-                eastCup.Transform(Transform.Translation(100000 * directionDic["east"]));
-
-                LineCurve westCup = (LineCurve)northSouthLine.DuplicateCurve();
-                westCup.Transform(Transform.Translation(100000 * directionDic["west"]));
-
-                Point3d eastCupStartPoint = eastLine.PointAtStart;
-                Point3d eastCupEndPoint = eastLine.PointAtEnd;
-
-                Point3d westCupStartPoint = westLine.PointAtStart;
-                Point3d westCupEndPoint = westLine.PointAtEnd;
-
-                // 分别将原版的起点终点，与拷贝点的起点终点连线，并组合这些曲线，成两个方向的两条闭合曲线。
-
-                LineCurve eastZoneStartCurve = new LineCurve(northMidPoint, eastCupStartPoint);
-                LineCurve eastZoneEndCurve = new LineCurve(southMidPoint, eastCupEndPoint);
-                LineCurve[] eastZoneLines = new LineCurve[4] { eastZoneStartCurve, eastZoneEndCurve, eastCup, eastLine };
-
-                var eastZone = LineCurve.JoinCurves(eastZoneLines)[0];
-                //LineCurve eastZone = LineCurve.JoinCurves(eastZoneLines);
-
-                LineCurve westZoneStartCurve = new LineCurve(northMidPoint, westCupStartPoint);
-                LineCurve westZoneEndCurve = new LineCurve(southMidPoint, westCupEndPoint);
-                LineCurve[] westZoneLines = new LineCurve[4] { westZoneStartCurve, westZoneEndCurve, westCup, westLine };
-
-                var westZone = LineCurve.JoinCurves(westZoneLines)[0];
-
-                //Curve[] northCurves = new Curve[2];
-                //Curve[] southCurves = new Curve[2];
-
-                //northCurves[0] = new LineCurve(originStartPoint, northLineStartPoint);
-                //northCurves[1] = new LineCurve(originEndPoint, northLineEndPoint);
-
-                //southCurves[0] = new LineCurve(originStartPoint, southLineStartPoint);
-                //southCurves[1] = new LineCurve(originEndPoint, southLineEndPoint);
-
-                // 求出每条线以及它的中间点，然后判断中间点是否在东西两个区域内，如果在，就将这条线加入到relationshipDicFirst的对应方向中
-
-
-                Dictionary<Point3d, Curve> curveMidpt = unusedFirst.ToDictionary(crv => crv.PointAtNormalizedLength(0.5));
-
-                foreach (var pt in curveMidpt.Keys)
-                {
-                    if (westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
-                        || westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
-                    {
-                        relationshipDicFirst["west"].Add(curveMidpt[pt]);
-                    }
-                    else if (eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
-                        || eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
-                    {
-                        relationshipDicFirst["east"].Add(curveMidpt[pt]);
-                    }
-                }
-
-                /*---------------------------对于第二次的结果进行Debug----------------------------------*/
-
-                // 定义调试的关系字典,这个字典里面装的是正确的最终分隔结果
-                Dictionary<string, List<Curve>> debuggedRelationshipDict = new Dictionary<string, List<Curve>>
-                {
-                    { "north", new List<Curve>() },
-                    { "south", new List<Curve>() },
-                    { "east", new List<Curve>() },
-                    { "west", new List<Curve>() }
-                };
-
-                Dictionary<string, string> negativeDirectionDict = new Dictionary<string, string>
-                {
-                    {"north", "south"},
-                    {"south", "north"},
-                    {"east", "west"},
-                    {"west", "east"}
-                };
-
-                //// 定义判断偏移的值
-                //double judgeOffsetValue = 0.05;
-
-                // 所有被处理过的边都会存放在这里
-                List<Curve> relationshipList = new List<Curve>();
-
-                foreach (KeyValuePair<string, List<Curve>> item in relationshipDicFirst)
-                {
-                    relationshipList.AddRange(item.Value);
-                }
-                
-                // # 如果关系列表中的边数等于总边数，则进行方向判断并debug
-                if (relationshipList.Count == edgeCount)
-                {
-                    foreach (KeyValuePair<string, List<Curve>> directionWithEdge in relationshipDicFirst)
-                    {
-                        // 获取方向和边列表
-                        string direction = directionWithEdge.Key;
-                        List<Curve> edgeList = directionWithEdge.Value;
-
-                        foreach (Curve edge in edgeList)
-                        {
-                            // 获取相反方向和偏移后的边
-                            string negativeDirection = negativeDirectionDict[direction];
-                            Point3d offsetPoint = JudgePointOfDispatch(edge, negativeDirection, directionDic);
-
-                            //// 老方法：偏移后取出中点判断
-                            //Curve offsetEdge = edge.Offset(offsetPoint, judgeOffsetValue, Rhino.Geometry.CurveOffsetCornerStyle.Sharp)[0];
-
-                            //// 如果偏移后的边在陆地范围内，则方向正确；否则，方向相反
-                            //if (offsetEdge.PointAtNormalizedLength(0.5).IsPointInPolygon(lands) != PointContainment.Inside)
-                            //{
-                            //    if (!debuggedRelationshipDict[negativeDirection].Contains(edge))
-                            //    {
-                            //        debuggedRelationshipDict[negativeDirection].Add(edge);
-                            //    }
-                            //}
-                            //else
-                            //{
-                            //    if (!debuggedRelationshipDict[direction].Contains(edge))
-                            //    {
-                            //        debuggedRelationshipDict[direction].Add(edge);
-                            //    }
-                            //}
-
-                            // 新方法，直接用offsetPoint判断
-
-                            // 不在land内则证明其方向是错误的，正确方向是其现在方向的反方向
-                            if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
-                            {
-                                if (!debuggedRelationshipDict[negativeDirection].Contains(edge))
-                                {
-                                    debuggedRelationshipDict[negativeDirection].Add(edge);
-                                }
-                            }
-                            // 在land内则表示，其方向是正确的
-                            else
-                            {
-                                if (!debuggedRelationshipDict[direction].Contains(edge))
-                                {
-                                    debuggedRelationshipDict[direction].Add(edge);
-                                }
-                            }
-                        }
-                    }
-                }
-                // 如果关系列表中的边数不等于总边数，则肯定漏掉了边
-                else if (relationshipList.Count != edgeCount)
-                {
-                    // 判断 landCurves 中有哪些边没有被处理过
-                    List<Curve> unhandledCurves = landCurves.Except(relationshipList).ToList();
-
-                    // 将未处理的边加入到正确的方向中
-                    foreach (Curve unhandledCurve in unhandledCurves)
-                    {
-                        // 先假设其归属为东，获取相反方向和偏移后的边
-                        //string negativeDirection = negativeDirectionDict["east"];
-
-                        string negativeDirection = "west";
-                        Point3d offsetPoint = JudgePointOfDispatch(unhandledCurve, negativeDirection, directionDic);
-
-                        // 不在land内则证明东方向是错误的，正确方向是其现在方向的反方向-西
-                        if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
-                        {
-                            if (!debuggedRelationshipDict[negativeDirection].Contains(unhandledCurve))
-                            {
-                                debuggedRelationshipDict[negativeDirection].Add(unhandledCurve);
-                            }
-                        }
-                        // 在land内则表示，其方向是正确的
-                        else
-                        {
-                            if (!debuggedRelationshipDict["east"].Contains(unhandledCurve))
-                            {
-                                debuggedRelationshipDict["east"].Add(unhandledCurve);
-                            }
-                        }
-                    }   
-                }
-
-                // 如果所有方向都没有成功调试，就使用原始的关系字典。这种情况出现在地块太细或者太窄了
-                if (debuggedRelationshipDict.Values.All(list => list.Count == 0))
-                {
-                    debuggedRelationshipDict = relationshipDicFirst;
-                }
-
-                return debuggedRelationshipDict;
-            }
-
             else
             {
-                throw new ArgumentOutOfRangeException(nameof(edgeCount), "Negative edgeCount");
+                foreach (Curve curve in landCurves.Except(haveBeenUsed))
+                {
+                    Point3d startpt = curve.PointAtStart;
+                    Point3d endpt = curve.PointAtEnd;
+                    Point3d midpt = curve.PointAtNormalizedLength(0.5);
+
+                    if (northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                        /*                        && northZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                && northZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                        && !haveBeenUsed.Contains(curve))
+                    {
+                        relationshipDicFour["north"].Add(curve);
+                        haveBeenUsed.Add(curve);
+                    }
+                    else if (southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                        /*                        && southZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                && southZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                        && !haveBeenUsed.Contains(curve))
+                    {
+                        relationshipDicFour["south"].Add(curve);
+                        haveBeenUsed.Add(curve);
+                    }
+                    else if (westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                        /*                        && westZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                && westZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                        && !haveBeenUsed.Contains(curve))
+                    {
+                        relationshipDicFour["west"].Add(curve);
+                        haveBeenUsed.Add(curve);
+                    }
+                    else if (eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                        /*                        && eastZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                && eastZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                        && !haveBeenUsed.Contains(curve))
+                    {
+                        relationshipDicFour["east"].Add(curve);
+                        haveBeenUsed.Add(curve);
+                    }
+                }
+
+                if (haveBeenUsed.Count == landCurves.Count)
+                {
+                    return relationshipDicFour;
+                }
+
+                else
+                {
+                    relationshipDicFour["east"] = new List<Curve>();
+                    relationshipDicFour["west"] = new List<Curve>();
+
+                    // 求出relationshipDicFirst中南北两个方向现在有的curve的中点
+                    Point3d northMidPoint = new Point3d();
+                    Point3d southMidPoint = new Point3d();
+
+                    foreach (Curve curve in relationshipDicFour["north"])
+                    {
+                        northMidPoint = curve.PointAtNormalizedLength(0.5);
+                    }
+
+                    foreach (Curve curve in relationshipDicFour["south"])
+                    {
+                        southMidPoint = curve.PointAtNormalizedLength(0.5);
+                    }
+
+                    var southEastEnd = new Point3d(southMidPoint);
+                    southEastEnd.Transform(Transform.Translation(new Vector3d(100 * boundingBox.Diagonal.X, 0, 0)));
+
+                    var northEastEnd = new Point3d(northMidPoint);
+                    northEastEnd.Transform(Transform.Translation(new Vector3d(100 * boundingBox.Diagonal.X, 0, 0)));
+
+                    var southWestEnd = new Point3d(southMidPoint);
+                    southWestEnd.Transform(Transform.Translation(new Vector3d(-100 * boundingBox.Diagonal.X, 0, 0)));
+
+                    var northWestEnd = new Point3d(northMidPoint);
+                    northWestEnd.Transform(Transform.Translation(new Vector3d(-100 * boundingBox.Diagonal.X, 0, 0)));
+
+                    eastZone = GenerateZone(southEastEnd, northEastEnd, southMidPoint, northMidPoint);
+                    westZone = GenerateZone(southWestEnd, northWestEnd, southMidPoint, northMidPoint);
+
+                    //// 两点连线，将这条线向东向西分别拷贝一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    //LineCurve northSouthLine = new LineCurve(northMidPoint, southMidPoint);
+
+                    //LineCurve eastLine = (LineCurve)northSouthLine.DuplicateCurve();
+                    //LineCurve westLine = (LineCurve)northSouthLine.DuplicateCurve();
+
+                    ////// 原版起止点
+                    ////Point3d originStartPoint = northMidPoint;
+                    ////Point3d originEndPoint = southMidPoint;
+                    ////var a = boundingBox.Diagonal.X;
+
+                    ////将两条线向东向西分别复制一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    //LineCurve eastCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    //eastCup.Transform(Transform.Translation(new Vector3d(10 * boundingBox.Diagonal.X, 0, 0)));
+
+                    //LineCurve westCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    //westCup.Transform(Transform.Translation(new Vector3d(-10 * boundingBox.Diagonal.X, 0, 0)));
+
+                    //Point3d eastCupStartPoint = eastLine.PointAtStart;
+                    //Point3d eastCupEndPoint = eastLine.PointAtEnd;
+
+                    //Point3d westCupStartPoint = westLine.PointAtStart;
+                    //Point3d westCupEndPoint = westLine.PointAtEnd;
+
+                    //// 分别将原版的起点终点，与拷贝点的起点终点连线，并组合这些曲线，成两个方向的两条闭合曲线。
+
+                    //LineCurve eastZoneStartCurve = new LineCurve(northMidPoint, eastCupStartPoint);
+                    //LineCurve eastZoneEndCurve = new LineCurve(southMidPoint, eastCupEndPoint);
+                    //LineCurve[] eastZoneLines = new LineCurve[4] { eastZoneStartCurve, eastZoneEndCurve, eastCup, eastLine };
+
+                    //eastZone = LineCurve.JoinCurves(eastZoneLines)[0];
+                    ////LineCurve eastZone = LineCurve.JoinCurves(eastZoneLines);
+
+                    //LineCurve westZoneStartCurve = new LineCurve(northMidPoint, westCupStartPoint);
+                    //LineCurve westZoneEndCurve = new LineCurve(southMidPoint, westCupEndPoint);
+                    //LineCurve[] westZoneLines = new LineCurve[4] { westZoneStartCurve, westZoneEndCurve, westCup, westLine };
+
+                    //westZone = LineCurve.JoinCurves(westZoneLines)[0];
+
+                    List<Curve> expect = new List<Curve>();
+                    expect.AddRange(relationshipDicFour["north"]);
+                    expect.AddRange(relationshipDicFour["south"]);
+
+                    foreach (Curve curve in landCurves.Except(expect))
+                    {
+                        //Point3d startpt = curve.PointAtStart;
+                        //Point3d endpt = curve.PointAtEnd;
+                        Point3d midpt = curve.PointAtNormalizedLength(0.5);
+
+/*                        if (northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                            *//*                        && northZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                    && northZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*//*
+                            && !haveBeenUsed.Contains(curve))
+                        {
+                            relationshipDicFour["north"].Add(curve);
+                            haveBeenUsed.Add(curve);
+                        }
+                        else if (southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                            *//*                        && southZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                    && southZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*//*
+                            && !haveBeenUsed.Contains(curve))
+                        {
+                            relationshipDicFour["south"].Add(curve);
+                            haveBeenUsed.Add(curve);
+                        }
+                        else */if (westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                            /*                        && westZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                    && westZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                            && !expect.Contains(curve))
+                        {
+                            relationshipDicFour["west"].Add(curve);
+                            expect.Add(curve);
+                        }
+                        else if (eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                            /*                        && eastZone.Contains(startpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                                    && eastZone.Contains(endpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside*/
+                            && !expect.Contains(curve))
+                        {
+                            relationshipDicFour["east"].Add(curve);
+                            expect.Add(curve);
+                        }
+                    }
+
+                    return relationshipDicFour;
+
+                    //////////////////////        //====================================================================================================
+                    //////////////////////        // 有些土地块的边缘线不在任何一个方向上，这些土地块的边缘线需要重新分配
+                    //////////////////////        // 对于单个封闭线进行的分方向操作
+                    //////////////////////        //public Dictionary<string, List<Curve>> DispatchEdgesThroughDirection(Curve closeCurve)
+                    //////////////////////        //{
+
+                    ////////////////////        //        // 方向点
+                    ////////////////////        //        List<Point3d> directionPts;
+
+                    ////////////////////        //        // 方向线
+                    ////////////////////        //        List<Line> directionLines;
+
+                    ////////////////////        //        // 获取方向点与方向线
+                    ////////////////////        //        double maxEdgeLength = GetDirection(closeCurve, out directionPts, out directionLines);
+
+                    ////////////////////        //        // 获取每个土地块的边缘线
+                    ////////////////////        //        // 将曲线分解为线段
+                    ////////////////////        //        landCurves = new List<Curve>();
+
+                    ////////////////////        //        if (closeCurve.IsClosed)
+                    ////////////////////        //        {
+                    ////////////////////        //            Curve[] segments = closeCurve.DuplicateSegments();
+                    ////////////////////        //            if (segments != null && segments.Length > 0)
+                    ////////////////////        //            {
+                    ////////////////////        //                landCurves.AddRange(segments);
+                    ////////////////////        //            }
+                    ////////////////////        //        }
+                    ////////////////////        //        // 如果没有闭合，则先将其闭合再执行同样操作
+                    ////////////////////        //        else
+                    ////////////////////        //        {
+                    ////////////////////        //            Curve closedCurve = closeCurve.DuplicateCurve();
+                    ////////////////////        //            closedCurve.MakeClosed(0.001);
+                    ////////////////////        //            Curve[] segments = closedCurve.DuplicateSegments();
+                    ////////////////////        //            if (segments != null && segments.Length > 0)
+                    ////////////////////        //            {
+                    ////////////////////        //                landCurves.AddRange(segments);
+                    ////////////////////        //            }
+                    ////////////////////        //        }
+
+
+                    ////////////////////        //        // 按照方向顺序排序
+                    ////////////////////        //        string[] directionOrder = { "north", "south", "east", "west" };
+
+                    ////////////////////        //        // 获取边缘线数量
+                    ////////////////////        //        int edgeCount = landCurves.Count;
+
+                    ////////////////////        //        // 获取每条边缘线的中点
+                    ////////////////////        //        List<Point3d> edgeMidpoints = new List<Point3d>();
+                    ////////////////////        //        foreach (Curve landLine in landCurves)
+                    ////////////////////        //        {
+                    ////////////////////        //            edgeMidpoints.Add(landLine.PointAtNormalizedLength(0.5));
+                    ////////////////////        //        }
+
+                    ////////////////////        //        // 计算每条边缘线与方向线之间的角度
+                    ////////////////////        //        List<double> northAngles = new List<double>();
+                    ////////////////////        //        List<double> southAngles = new List<double>();
+                    ////////////////////        //        List<double> eastAngles = new List<double>();
+                    ////////////////////        //        List<double> westAngles = new List<double>();
+
+                    ////////////////////        //        foreach (Curve landLine in landCurves)
+                    ////////////////////        //        {
+                    ////////////////////        //            northAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[0].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    ////////////////////        //            southAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[1].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    ////////////////////        //            eastAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[2].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    ////////////////////        //            westAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[3].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    ////////////////////        //        }
+
+                    ////////////////////        //        // 计算每条边缘线与方向点之间的距离
+                    ////////////////////        //        List<double> northDistances = new List<double>();
+                    ////////////////////        //        List<double> southDistances = new List<double>();
+                    ////////////////////        //        List<double> eastDistances = new List<double>();
+                    ////////////////////        //        List<double> westDistances = new List<double>();
+
+                    ////////////////////        //        foreach (Point3d edgeMidpoint in edgeMidpoints)
+                    ////////////////////        //        {
+                    ////////////////////        //            northDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[0]), 2));
+                    ////////////////////        //            southDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[1]), 2));
+                    ////////////////////        //            eastDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[2]), 2));
+                    ////////////////////        //            westDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[3]), 2));
+                    ////////////////////        //        }
+
+                    ////////////////////        //        // 如果边缘线数量小于4，则跳过
+                    ////////////////////        //        if (edgeCount <= 4)
+                    ////////////////////        //        {
+                    ////////////////////        //            return relationshipDicFour;
+
+                    ////////////////////        //        }
+
+                    ////////////////////        //        else if (edgeCount == 4)
+                    ////////////////////        //        {
+                    ////////////////////        //            relationshipDicFour = new Dictionary<string, List<Curve>>();
+                    ////////////////////        //            relationshipDicFour["north"] = new List<Curve>();
+                    ////////////////////        //            relationshipDicFour["south"] = new List<Curve>();
+                    ////////////////////        //            relationshipDicFour["east"] = new List<Curve>();
+                    ////////////////////        //            relationshipDicFour["west"] = new List<Curve>();
+
+                    ////////////////////        //            relationshipDicFour["north"].Add(landCurves[northDistances.IndexOf(northDistances.Min())]);
+                    ////////////////////        //            relationshipDicFour["south"].Add(landCurves[southDistances.IndexOf(southDistances.Min())]);
+                    ////////////////////        //            relationshipDicFour["east"].Add(landCurves[eastDistances.IndexOf(eastDistances.Min())]);
+                    ////////////////////        //            relationshipDicFour["west"].Add(landCurves[westDistances.IndexOf(westDistances.Min())]);
+
+                    ////////////////////        //            return relationshipDicFour;
+                    ////////////////////        //        }
+
+                    ////////////////////        //        else if (edgeCount > 4)
+                    ////////////////////        //        {
+                    ////////////////////        //            int maxLength = (int)Math.Round(maxEdgeLength);
+
+                    ////////////////////        //            // 分别算出符合条件的边缘线种子选手，最后再通过评分来确定其方向
+
+                    ////////////////////        //            List<Curve> northAppropriateEdges = new List<Curve>();
+                    ////////////////////        //            List<Curve> southAppropriateEdges = new List<Curve>();
+                    ////////////////////        //            List<Curve> eastAppropriateEdges = new List<Curve>();
+                    ////////////////////        //            List<Curve> westAppropriateEdges = new List<Curve>();
+
+                    ////////////////////        //            for (int i = 0; i < northAngles.Count; i++)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (120 > northAngles[i] && northAngles[i] >= 60)
+                    ////////////////////        //                {
+                    ////////////////////        //                    northAppropriateEdges.Add(landCurves[i]);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            for (int i = 0; i < southAngles.Count; i++)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (120 > southAngles[i] && southAngles[i] >= 60)
+                    ////////////////////        //                {
+                    ////////////////////        //                    southAppropriateEdges.Add(landCurves[i]);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            for (int i = 0; i < eastAngles.Count; i++)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (120 > eastAngles[i] && eastAngles[i] >= 60)
+                    ////////////////////        //                {
+                    ////////////////////        //                    eastAppropriateEdges.Add(landCurves[i]);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            for (int i = 0; i < westAngles.Count; i++)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (120 > westAngles[i] && westAngles[i] >= 60)
+                    ////////////////////        //                {
+                    ////////////////////        //                    westAppropriateEdges.Add(landCurves[i]);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            Dictionary<Curve, double> northAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    ////////////////////        //            Dictionary<Curve, double> southAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    ////////////////////        //            Dictionary<Curve, double> eastAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    ////////////////////        //            Dictionary<Curve, double> westAppropriateEdgesDistance = new Dictionary<Curve, double>();
+
+                    ////////////////////        //            foreach (Curve edge in northAppropriateEdges)
+                    ////////////////////        //            {
+                    ////////////////////        //                northAppropriateEdgesDistance.Add(edge, northDistances[landCurves.IndexOf(edge)]);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve edge in southAppropriateEdges)
+                    ////////////////////        //            {
+                    ////////////////////        //                southAppropriateEdgesDistance.Add(edge, southDistances[landCurves.IndexOf(edge)]);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve edge in eastAppropriateEdges)
+                    ////////////////////        //            {
+                    ////////////////////        //                eastAppropriateEdgesDistance.Add(edge, eastDistances[landCurves.IndexOf(edge)]);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve edge in westAppropriateEdges)
+                    ////////////////////        //            {
+                    ////////////////////        //                westAppropriateEdgesDistance.Add(edge, westDistances[landCurves.IndexOf(edge)]);
+                    ////////////////////        //            }
+
+
+                    ////////////////////        //            // 首次区分方向的结果
+                    ////////////////////        //            var relationshipDicFirst = new Dictionary<string, List<Curve>>()
+                    ////////////////////        //                {
+                    ////////////////////        //                    {"north", new List<Curve>() },
+                    ////////////////////        //                    {"south", new List<Curve>() },
+                    ////////////////////        //                    {"east", new List<Curve>() },
+                    ////////////////////        //                    {"west", new List<Curve>() }
+                    ////////////////////        //                };
+
+                    ////////////////////        //            // 挑选四个方向的AppropriateEdgesDistance最小的值所对应的key，加入到relationshipDicFirst的对应方向中
+
+                    ////////////////////        //            double minNorthDistance = northAppropriateEdgesDistance.Values.Min();
+                    ////////////////////        //            double minSouthDistance = southAppropriateEdgesDistance.Values.Min();
+                    ////////////////////        //            double minEastDistance = eastAppropriateEdgesDistance.Values.Min();
+                    ////////////////////        //            double minWestDistance = westAppropriateEdgesDistance.Values.Min();
+
+                    ////////////////////        //            // 通过以上的值搜索对应的key，并加入到relationshipDicFirst的对应方向中，四个方向的key值不会重复，各一个
+
+                    ////////////////////        //            List<Curve> judgeListFirst = new List<Curve>();
+
+                    ////////////////////        //            foreach (Curve appropriate in northAppropriateEdgesDistance.Keys)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (northAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    ////////////////////        //                {
+                    ////////////////////        //                    relationshipDicFirst["north"].Add(appropriate);
+                    ////////////////////        //                    judgeListFirst.Add(appropriate);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+                    ////////////////////        //            foreach (Curve appropriate in southAppropriateEdgesDistance.Keys)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (southAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    ////////////////////        //                {
+                    ////////////////////        //                    relationshipDicFirst["south"].Add(appropriate);
+                    ////////////////////        //                    judgeListFirst.Add(appropriate);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve appropriate in eastAppropriateEdgesDistance.Keys)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (eastAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    ////////////////////        //                {
+                    ////////////////////        //                    relationshipDicFirst["east"].Add(appropriate);
+                    ////////////////////        //                    judgeListFirst.Add(appropriate);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve appropriate in westAppropriateEdgesDistance.Keys)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (westAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    ////////////////////        //                {
+                    ////////////////////        //                    relationshipDicFirst["west"].Add(appropriate);
+                    ////////////////////        //                    judgeListFirst.Add(appropriate);
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            // -----------------------------进行方向检查并且重新调整--------------------------
+                    ////////////////////        //            // 建立一个字典，四个方向为key，value是朝向四个方向的四个单位向量
+                    ////////////////////        //            var directionDic = new Dictionary<string, Vector3d>()
+                    ////////////////////        //                    {
+                    ////////////////////        //                        {"north", new Vector3d(0, 1, 0) },
+                    ////////////////////        //                        {"south", new Vector3d(0, -1, 0) },
+                    ////////////////////        //                        {"east", new Vector3d(1, 0, 0) },
+                    ////////////////////        //                        {"west", new Vector3d(-1, 0, 0) }
+                    ////////////////////        //                    };
+
+                    ////////////////////        //            // 确认现在的landCurves中所有不在judgeListFirst中的边
+                    ////////////////////        //            Curve[] unusedFirst = new Curve[landCurves.Count - judgeListFirst.Count];
+
+                    ////////////////////        //            int unusedFirstIndex = 0;
+
+                    ////////////////////        //            foreach (Curve curve in landCurves)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (!judgeListFirst.Contains(curve))
+                    ////////////////////        //                {
+                    ////////////////////        //                    unusedFirst[unusedFirstIndex] = curve;
+                    ////////////////////        //                    unusedFirstIndex++;
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            //// ----------------------------------生成东西区域--------------------------------------------
+
+                    ////////////////////        //            // 求出relationshipDicFirst中南北两个方向现在有的curve的中点
+                    ////////////////////        //            Point3d northMidPoint = new Point3d();
+                    ////////////////////        //            Point3d southMidPoint = new Point3d();
+
+                    ////////////////////        //            foreach (Curve curve in relationshipDicFirst["north"])
+                    ////////////////////        //            {
+                    ////////////////////        //                northMidPoint = curve.PointAtNormalizedLength(0.5);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            foreach (Curve curve in relationshipDicFirst["south"])
+                    ////////////////////        //            {
+                    ////////////////////        //                southMidPoint = curve.PointAtNormalizedLength(0.5);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            // 两点连线，将这条线向东向西分别拷贝一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    ////////////////////        //            LineCurve northSouthLine = new LineCurve(northMidPoint, southMidPoint);
+
+                    ////////////////////        //            LineCurve eastLine = (LineCurve)northSouthLine.DuplicateCurve();
+                    ////////////////////        //            LineCurve westLine = (LineCurve)northSouthLine.DuplicateCurve();
+
+                    ////////////////////        //            //// 原版起止点
+                    ////////////////////        //            //Point3d originStartPoint = northMidPoint;
+                    ////////////////////        //            //Point3d originEndPoint = southMidPoint;
+
+                    ////////////////////        //            //将两条线向东向西分别复制一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    ////////////////////        //            LineCurve eastCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    ////////////////////        //            eastCup.Transform(Transform.Translation(100000 * directionDic["east"]));
+
+                    ////////////////////        //            LineCurve westCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    ////////////////////        //            westCup.Transform(Transform.Translation(100000 * directionDic["west"]));
+
+                    ////////////////////        //            Point3d eastCupStartPoint = eastLine.PointAtStart;
+                    ////////////////////        //            Point3d eastCupEndPoint = eastLine.PointAtEnd;
+
+                    ////////////////////        //            Point3d westCupStartPoint = westLine.PointAtStart;
+                    ////////////////////        //            Point3d westCupEndPoint = westLine.PointAtEnd;
+
+                    ////////////////////        //            // 分别将原版的起点终点，与拷贝点的起点终点连线，并组合这些曲线，成两个方向的两条闭合曲线。
+
+                    ////////////////////        //            LineCurve eastZoneStartCurve = new LineCurve(northMidPoint, eastCupStartPoint);
+                    ////////////////////        //            LineCurve eastZoneEndCurve = new LineCurve(southMidPoint, eastCupEndPoint);
+                    ////////////////////        //            LineCurve[] eastZoneLines = new LineCurve[4] { eastZoneStartCurve, eastZoneEndCurve, eastCup, eastLine };
+
+                    ////////////////////        //            eastZone = LineCurve.JoinCurves(eastZoneLines)[0];
+                    ////////////////////        //            //LineCurve eastZone = LineCurve.JoinCurves(eastZoneLines);
+
+                    ////////////////////        //            LineCurve westZoneStartCurve = new LineCurve(northMidPoint, westCupStartPoint);
+                    ////////////////////        //            LineCurve westZoneEndCurve = new LineCurve(southMidPoint, westCupEndPoint);
+                    ////////////////////        //            LineCurve[] westZoneLines = new LineCurve[4] { westZoneStartCurve, westZoneEndCurve, westCup, westLine };
+
+                    ////////////////////        //            westZone = LineCurve.JoinCurves(westZoneLines)[0];
+
+                    ////////////////////        //            //// -----------------------------------------生成东西区域结束--------------------------------------------
+
+
+
+                    ////////////////////        //            //---------------------------对于第二次的结果进行Debug----------------------------------
+
+                    ////////////////////        //            // 定义调试的关系字典,这个字典里面装的是正确的最终分隔结果
+                    ////////////////////        //            Dictionary<string, List<Curve>> debuggedRelationshipDict = new Dictionary<string, List<Curve>>
+                    ////////////////////        //                {
+                    ////////////////////        //                    { "north", new List<Curve>() },
+                    ////////////////////        //                    { "south", new List<Curve>() },
+                    ////////////////////        //                    { "east", new List<Curve>() },
+                    ////////////////////        //                    { "west", new List<Curve>() }
+                    ////////////////////        //                };
+
+                    ////////////////////        //            Dictionary<string, string> negativeDirectionDict = new Dictionary<string, string>
+                    ////////////////////        //                {
+                    ////////////////////        //                    {"north", "south"},
+                    ////////////////////        //                    {"south", "north"},
+                    ////////////////////        //                    {"east", "west"},
+                    ////////////////////        //                    {"west", "east"}
+                    ////////////////////        //                };
+
+                    ////////////////////        //            //// 定义判断偏移的值
+                    ////////////////////        //            //double judgeOffsetValue = 0.05;
+
+                    ////////////////////        //            // 所有被处理过的边都会存放在这里
+                    ////////////////////        //            List<Curve> relationshipList = new List<Curve>();
+
+                    ////////////////////        //            foreach (KeyValuePair<string, List<Curve>> item in relationshipDicFirst)
+                    ////////////////////        //            {
+                    ////////////////////        //                relationshipList.AddRange(item.Value);
+                    ////////////////////        //            }
+
+                    ////////////////////        //            // # 如果关系列表中的边数等于总边数，则进行方向判断并debug
+                    ////////////////////        //            if (relationshipList.Count == edgeCount)
+                    ////////////////////        //            {
+                    ////////////////////        //                foreach (KeyValuePair<string, List<Curve>> directionWithEdge in relationshipDicFirst)
+                    ////////////////////        //                {
+                    ////////////////////        //                    // 获取方向和边列表
+                    ////////////////////        //                    string direction = directionWithEdge.Key;
+                    ////////////////////        //                    List<Curve> edgeList = directionWithEdge.Value;
+
+                    ////////////////////        //                    foreach (Curve edge in edgeList)
+                    ////////////////////        //                    {
+                    ////////////////////        //                        // 获取相反方向和偏移后的边
+                    ////////////////////        //                        string negativeDirection = negativeDirectionDict[direction];
+                    ////////////////////        //                        Point3d offsetPoint = JudgePointOfDispatch(edge, negativeDirection, directionDic);
+
+                    ////////////////////        //                        // 新方法，直接用offsetPoint判断
+
+                    ////////////////////        //                        // 不在land内则证明其方向是错误的，正确方向是其现在方向的反方向
+                    ////////////////////        //                        if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                    ////////////////////        //                        {
+                    ////////////////////        //                            if (!debuggedRelationshipDict[negativeDirection].Contains(edge))
+                    ////////////////////        //                            {
+                    ////////////////////        //                                debuggedRelationshipDict[negativeDirection].Add(edge);
+                    ////////////////////        //                            }
+                    ////////////////////        //                        }
+                    ////////////////////        //                        // 在land内则表示，其方向是正确的
+                    ////////////////////        //                        else
+                    ////////////////////        //                        {
+                    ////////////////////        //                            if (!debuggedRelationshipDict[direction].Contains(edge))
+                    ////////////////////        //                            {
+                    ////////////////////        //                                debuggedRelationshipDict[direction].Add(edge);
+                    ////////////////////        //                            }
+                    ////////////////////        //                        }
+                    ////////////////////        //                    }
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+                    ////////////////////        //            // 如果关系列表中的边数不等于总边数，则肯定漏掉了边
+                    ////////////////////        //            else if (relationshipList.Count != edgeCount)
+                    ////////////////////        //            {
+                    ////////////////////        //                // 判断 landCurves 中有哪些边没有被处理过
+                    ////////////////////        //                List<Curve> unhandledCurves = landCurves.Except(relationshipList).ToList();
+
+                    ////////////////////        //                // 将未处理的边加入到正确的方向中
+                    ////////////////////        //                foreach (Curve unhandledCurve in unhandledCurves)
+                    ////////////////////        //                {
+                    ////////////////////        //                    // 先假设其归属为东，获取相反方向和偏移后的边
+                    ////////////////////        //                    //string negativeDirection = negativeDirectionDict["east"];
+
+                    ////////////////////        //                    string negativeDirection = "west";
+                    ////////////////////        //                    Point3d offsetPoint = JudgePointOfDispatch(unhandledCurve, negativeDirection, directionDic);
+
+                    ////////////////////        //                    // 不在land内则证明东方向是错误的，正确方向是其现在方向的反方向-西
+                    ////////////////////        //                    if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                    ////////////////////        //                    {
+                    ////////////////////        //                        if (!debuggedRelationshipDict[negativeDirection].Contains(unhandledCurve))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            debuggedRelationshipDict[negativeDirection].Add(unhandledCurve);
+                    ////////////////////        //                        }
+                    ////////////////////        //                    }
+                    ////////////////////        //                    // 在land内则表示，其方向是正确的
+                    ////////////////////        //                    else
+                    ////////////////////        //                    {
+                    ////////////////////        //                        if (!debuggedRelationshipDict["east"].Contains(unhandledCurve))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            debuggedRelationshipDict["east"].Add(unhandledCurve);
+                    ////////////////////        //                        }
+                    ////////////////////        //                    }
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+                    ////////////////////        //            // 如果所有方向都没有成功调试，就使用原始的关系字典。这种情况出现在地块太细或者太窄了
+                    ////////////////////        //            if (debuggedRelationshipDict.Values.All(list => list.Count == 0))
+                    ////////////////////        //            {
+                    ////////////////////        //                debuggedRelationshipDict = relationshipDicFirst;
+                    ////////////////////        //            }
+
+                    ////////////////////        //            if (edgeCount >= 4)
+                    ////////////////////        //            {
+                    ////////////////////        //                if (debuggedRelationshipDict["north"].Count == 0
+                    ////////////////////        //                    || debuggedRelationshipDict["south"].Count == 0
+                    ////////////////////        //                    || debuggedRelationshipDict["east"].Count == 0
+                    ////////////////////        //                    || debuggedRelationshipDict["west"].Count == 0)
+                    ////////////////////        //                {
+                    ////////////////////        //                    // --------------------------------------生成区域--------------------------------------------
+                    ////////////////////        //                    offset = 1;
+
+
+                    ////////////////////        //                    Dictionary<Point3d, Curve> curveMidpt = unusedFirst.ToDictionary(crv => crv.PointAtNormalizedLength(0.5));
+
+                    ////////////////////        //                    foreach (var pt in curveMidpt.Keys)
+                    ////////////////////        //                    {
+                    ////////////////////        //                        if (westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            || westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+                    ////////////////////        //                        {
+                    ////////////////////        //                            relationshipDicFirst["west"].Add(curveMidpt[pt]);
+                    ////////////////////        //                        }
+                    ////////////////////        //                        else if (eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            || eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+                    ////////////////////        //                        {
+                    ////////////////////        //                            relationshipDicFirst["east"].Add(curveMidpt[pt]);
+                    ////////////////////        //                        }
+                    ////////////////////        //                    }
+
+                    ////////////////////        //                    // -------------------------------------区域完--------------------------------------------------
+
+                    ////////////////////        //                    var newDebuggedRelationshipDict = new Dictionary<string, List<Curve>>
+                    ////////////////////        //                        {
+                    ////////////////////        //                            { "north", new List<Curve>() },
+                    ////////////////////        //                            { "south", new List<Curve>() },
+                    ////////////////////        //                            { "east", new List<Curve>() },
+                    ////////////////////        //                            { "west", new List<Curve>() }
+                    ////////////////////        //                        };
+
+                    ////////////////////        //                    haveBeenUsed = new List<Curve>();
+
+                    ////////////////////        //                    foreach (Curve landEdge in landCurves)
+                    ////////////////////        //                    {
+                    ////////////////////        //                        Point3d midpt = landEdge.PointAtNormalizedLength(0.5);
+
+                    ////////////////////        //                        if (northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            && !haveBeenUsed.Contains(landEdge))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            newDebuggedRelationshipDict["north"].Add(landEdge);
+                    ////////////////////        //                            haveBeenUsed.Add(landEdge);
+                    ////////////////////        //                        }
+                    ////////////////////        //                        else if (southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            && !haveBeenUsed.Contains(landEdge))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            newDebuggedRelationshipDict["south"].Add(landEdge);
+                    ////////////////////        //                            haveBeenUsed.Add(landEdge);
+                    ////////////////////        //                        }
+                    ////////////////////        //                        else if (westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            && !haveBeenUsed.Contains(landEdge))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            newDebuggedRelationshipDict["west"].Add(landEdge);
+                    ////////////////////        //                            haveBeenUsed.Add(landEdge);
+                    ////////////////////        //                        }
+                    ////////////////////        //                        else if (eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    ////////////////////        //                            && !haveBeenUsed.Contains(landEdge))
+                    ////////////////////        //                        {
+                    ////////////////////        //                            newDebuggedRelationshipDict["east"].Add(landEdge);
+                    ////////////////////        //                            haveBeenUsed.Add(landEdge);
+                    ////////////////////        //                        }
+                    ////////////////////        //                    }
+                    ////////////////////        //                    if (haveBeenUsed.Count == landCurves.Count)
+                    ////////////////////        //                        debuggedRelationshipDict = newDebuggedRelationshipDict;
+                    ////////////////////        //                    else
+                    ////////////////////        //                    {
+                    ////////////////////        //                        foreach (Curve curve in landCurves)
+                    ////////////////////        //                        {
+                    ////////////////////        //                            if (haveBeenUsed.Contains(curve))
+                    ////////////////////        //                                continue;
+                    ////////////////////        //                            else
+                    ////////////////////        //                            {
+                    ////////////////////        //                                foreach (string direction in newDebuggedRelationshipDict.Keys)
+                    ////////////////////        //                                {
+                    ////////////////////        //                                    if (debuggedRelationshipDict[direction].Contains(curve))
+                    ////////////////////        //                                    {
+                    ////////////////////        //                                        newDebuggedRelationshipDict[direction].Add(curve);
+                    ////////////////////        //                                    }
+                    ////////////////////        //                                }
+                    ////////////////////        //                            }
+                    ////////////////////        //                        }
+                    ////////////////////        //                        debuggedRelationshipDict = newDebuggedRelationshipDict;
+
+                    ////////////////////        //                    }
+                    ////////////////////        //                }
+                    ////////////////////        //            }
+
+
+                    ////////////////////        //            return debuggedRelationshipDict;
+                    ////////////////////        //        }
+
+                    ////////////////////        //        else
+                    ////////////////////        //        {
+                    ////////////////////        //            throw new ArgumentOutOfRangeException(nameof(edgeCount), "Negative edgeCount");
+                    ////////////////////        //        }
+                    ////////////////////        //    }
+
+                    ////////////////////        //    //return relationshipDicFour;
+                    ////////////////////        //}
+
+
+                    ////////////////////        /*}*/
+
+
+                    //// 对于单个封闭线进行的分方向操作
+                    ////public Dictionary<string, List<Curve>> DispatchEdgesThroughDirection(Curve closeCurve)
+                    ////{
+
+                    //// 方向点
+                    //List<Point3d> directionPts;
+
+                    //        // 方向线
+                    //        List<Line> directionLines;
+
+                    //        // 获取方向点与方向线
+                    //        double maxEdgeLength = GetDirection(closeCurve, out directionPts, out directionLines);
+
+                    //        // 获取每个土地块的边缘线
+                    //        // 将曲线分解为线段
+                    //        List<Curve> landCurves = new List<Curve>();
+
+                    //        if (closeCurve.IsClosed)
+                    //        {
+                    //            Curve[] segments = closeCurve.DuplicateSegments();
+                    //            if (segments != null && segments.Length > 0)
+                    //            {
+                    //                landCurves.AddRange(segments);
+                    //            }
+                    //        }
+                    //        // 如果没有闭合，则先将其闭合再执行同样操作
+                    //        else
+                    //        {
+                    //            Curve closedCurve = closeCurve.DuplicateCurve();
+                    //            closedCurve.MakeClosed(0.001);
+                    //            Curve[] segments = closedCurve.DuplicateSegments();
+                    //            if (segments != null && segments.Length > 0)
+                    //            {
+                    //                landCurves.AddRange(segments);
+                    //            }
+                    //        }
+
+
+                    //        // 按照方向顺序排序
+                    //        string[] directionOrder = { "north", "south", "east", "west" };
+
+                    //        // 获取边缘线数量
+                    //        int edgeCount = landCurves.Count;
+
+                    //        // 获取每条边缘线的中点
+                    //        List<Point3d> edgeMidpoints = new List<Point3d>();
+                    //        foreach (Curve landLine in landCurves)
+                    //        {
+                    //            edgeMidpoints.Add(landLine.PointAtNormalizedLength(0.5));
+                    //        }
+
+                    //        // 计算每条边缘线与方向线之间的角度
+                    //        List<double> northAngles = new List<double>();
+                    //        List<double> southAngles = new List<double>();
+                    //        List<double> eastAngles = new List<double>();
+                    //        List<double> westAngles = new List<double>();
+
+                    //        foreach (Curve landLine in landCurves)
+                    //        {
+                    //            northAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[0].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    //            southAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[1].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    //            eastAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[2].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    //            westAngles.Add(180 * Math.Round(Vector3d.VectorAngle(directionLines[3].Direction, landLine.TangentAtStart), 2) / Math.PI);
+                    //        }
+
+                    //        // 计算每条边缘线与方向点之间的距离
+                    //        List<double> northDistances = new List<double>();
+                    //        List<double> southDistances = new List<double>();
+                    //        List<double> eastDistances = new List<double>();
+                    //        List<double> westDistances = new List<double>();
+
+                    //        foreach (Point3d edgeMidpoint in edgeMidpoints)
+                    //        {
+                    //            northDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[0]), 2));
+                    //            southDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[1]), 2));
+                    //            eastDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[2]), 2));
+                    //            westDistances.Add(Math.Round(edgeMidpoint.DistanceTo(directionPts[3]), 2));
+                    //        }
+
+                    //        // 如果边缘线数量小于4，则跳过
+                    //        if (edgeCount <= 4)
+                    //        {
+                    //            double offset = 1;
+
+                    //            BoundingBox boundingBox = closeCurve.GetBoundingBox(true);
+
+                    //            double offsetOriginX = boundingBox.Diagonal.X / 3;
+                    //            double offsetOriginY = boundingBox.Diagonal.Y / 3;
+
+                    //            Point3d center = boundingBox.Center;
+
+                    //            Point3d horizontalStart = new Point3d(center.X, boundingBox.Min.Y, 0);
+                    //            Point3d horizontalEnd = new Point3d(center.X, boundingBox.Max.Y, 0);
+
+                    //            Point3d verticalStart = new Point3d(boundingBox.Min.X, center.Y, 0);
+                    //            Point3d verticalEnd = new Point3d(boundingBox.Max.X, center.Y, 0);
+
+                    //            Vector3d diagonal = boundingBox.Diagonal;
+                    //            double length = diagonal.Length;
+                    //            double extensionFactor = length / 2.0;
+
+                    //            Point3d horizontalStartExtended = Point3d.Add(horizontalStart, new Vector3d(horizontalStart - center) * extensionFactor);
+                    //            Point3d horizontalEndExtended = Point3d.Add(horizontalEnd, new Vector3d(horizontalEnd - center) * extensionFactor);
+
+                    //            Point3d verticalStartExtended = Point3d.Add(verticalStart, new Vector3d(verticalStart - center) * extensionFactor);
+                    //            Point3d verticalEndExtended = Point3d.Add(verticalEnd, new Vector3d(verticalEnd - center) * extensionFactor);
+
+                    //            Point3d leftStart = new Point3d(horizontalStartExtended.X - diagonal.X / 2.0 - offset, horizontalStartExtended.Y, 0);
+                    //            Point3d leftEnd = new Point3d(horizontalEndExtended.X - diagonal.X / 2.0 - offset, horizontalEndExtended.Y, 0);
+
+                    //            Point3d rightStart = new Point3d(horizontalStartExtended.X + diagonal.X / 2.0 + offset, horizontalStartExtended.Y, 0);
+                    //            Point3d rightEnd = new Point3d(horizontalEndExtended.X + diagonal.X / 2.0 + offset, horizontalEndExtended.Y, 0);
+
+                    //            Point3d topStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y + diagonal.Y / 2.0 + offset, 0);
+                    //            Point3d topEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y + diagonal.Y / 2.0 + offset, 0);
+
+                    //            Point3d bottomStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y - diagonal.Y / 2.0 - offset, 0);
+                    //            Point3d bottomEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y - diagonal.Y / 2.0 - offset, 0);
+
+                    //            // Generate the left, right, top, and bottom zones
+                    //            Curve westZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, leftStart, leftEnd);
+                    //            westZone.Translate(new Vector3d(-offsetOriginX, 0, 0));
+
+                    //            Curve eastZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, rightStart, rightEnd);
+                    //            eastZone.Translate(new Vector3d(offsetOriginX, 0, 0));
+
+                    //            Curve northZone = GenerateZone(verticalStartExtended, verticalEndExtended, topStart, topEnd);
+                    //            northZone.Translate(new Vector3d(0, offsetOriginY, 0));
+
+                    //            Curve southZone = GenerateZone(verticalStartExtended, verticalEndExtended, bottomStart, bottomEnd);
+                    //            southZone.Translate(new Vector3d(0, -offsetOriginY, 0));
+
+                    //            // Function to generate a zone
+                    //            Curve GenerateZone(Point3d startExtended, Point3d endExtended, Point3d start, Point3d end)
+                    //            {
+                    //                LineCurve upCurve = new LineCurve(startExtended, start);
+                    //                LineCurve downCurve = new LineCurve(endExtended, end);
+                    //                LineCurve startCurve = new LineCurve(startExtended, endExtended);
+                    //                LineCurve endCurve = new LineCurve(start, end);
+
+                    //                Curve[] curves = new Curve[] { upCurve, downCurve, startCurve, endCurve };
+
+                    //                return Curve.JoinCurves(curves)[0];
+                    //            }
+
+                    //            var relationshipDicFour = new Dictionary<string, List<Curve>>();
+                    //            relationshipDicFour["north"] = new List<Curve>();
+                    //            relationshipDicFour["south"] = new List<Curve>();
+                    //            relationshipDicFour["east"] = new List<Curve>();
+                    //            relationshipDicFour["west"] = new List<Curve>();
+
+                    //            List<Curve> haveBeenUsed = new List<Curve>();
+
+                    //            foreach (Curve landEdge in landCurves)
+                    //            {
+                    //                Point3d midpt = landEdge.PointAtNormalizedLength(0.5);
+
+                    //                if (northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                    && !haveBeenUsed.Contains(landEdge))
+                    //                {
+                    //                    relationshipDicFour["north"].Add(landEdge);
+                    //                    haveBeenUsed.Add(landEdge);
+                    //                }
+                    //                else if (southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                    && !haveBeenUsed.Contains(landEdge))
+                    //                {
+                    //                    relationshipDicFour["south"].Add(landEdge);
+                    //                    haveBeenUsed.Add(landEdge);
+                    //                }
+                    //                else if (westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                    && !haveBeenUsed.Contains(landEdge))
+                    //                {
+                    //                    relationshipDicFour["west"].Add(landEdge);
+                    //                    haveBeenUsed.Add(landEdge);
+                    //                }
+                    //                else if (eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                    && !haveBeenUsed.Contains(landEdge))
+                    //                {
+                    //                    relationshipDicFour["east"].Add(landEdge);
+                    //                    haveBeenUsed.Add(landEdge);
+                    //                }
+                    //            }
+                    //            return relationshipDicFour;
+
+                    //        }
+
+                    //        //else if (edgeCount == 4)
+                    //        //{
+                    //        //    var relationshipDicFour = new Dictionary<string, List<Curve>>();
+                    //        //    relationshipDicFour["north"] = new List<Curve>();
+                    //        //    relationshipDicFour["south"] = new List<Curve>();
+                    //        //    relationshipDicFour["east"] = new List<Curve>();
+                    //        //    relationshipDicFour["west"] = new List<Curve>();
+
+                    //        //    relationshipDicFour["north"].Add(landCurves[northDistances.IndexOf(northDistances.Min())]);
+                    //        //    relationshipDicFour["south"].Add(landCurves[southDistances.IndexOf(southDistances.Min())]);
+                    //        //    relationshipDicFour["east"].Add(landCurves[eastDistances.IndexOf(eastDistances.Min())]);
+                    //        //    relationshipDicFour["west"].Add(landCurves[westDistances.IndexOf(westDistances.Min())]);
+
+                    //        //    return relationshipDicFour;
+                    //        //}
+
+                    //        else if (edgeCount > 4)
+                    //        {
+                    //            int maxLength = (int)Math.Round(maxEdgeLength);
+
+                    //            // 分别算出符合条件的边缘线种子选手，最后再通过评分来确定其方向
+
+                    //            List<Curve> northAppropriateEdges = new List<Curve>();
+                    //            List<Curve> southAppropriateEdges = new List<Curve>();
+                    //            List<Curve> eastAppropriateEdges = new List<Curve>();
+                    //            List<Curve> westAppropriateEdges = new List<Curve>();
+
+                    //            for (int i = 0; i < northAngles.Count; i++)
+                    //            {
+                    //                if (120 > northAngles[i] && northAngles[i] >= 60)
+                    //                {
+                    //                    northAppropriateEdges.Add(landCurves[i]);
+                    //                }
+                    //            }
+
+                    //            for (int i = 0; i < southAngles.Count; i++)
+                    //            {
+                    //                if (120 > southAngles[i] && southAngles[i] >= 60)
+                    //                {
+                    //                    southAppropriateEdges.Add(landCurves[i]);
+                    //                }
+                    //            }
+
+                    //            for (int i = 0; i < eastAngles.Count; i++)
+                    //            {
+                    //                if (120 > eastAngles[i] && eastAngles[i] >= 60)
+                    //                {
+                    //                    eastAppropriateEdges.Add(landCurves[i]);
+                    //                }
+                    //            }
+
+                    //            for (int i = 0; i < westAngles.Count; i++)
+                    //            {
+                    //                if (120 > westAngles[i] && westAngles[i] >= 60)
+                    //                {
+                    //                    westAppropriateEdges.Add(landCurves[i]);
+                    //                }
+                    //            }
+
+                    //            Dictionary<Curve, double> northAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    //            Dictionary<Curve, double> southAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    //            Dictionary<Curve, double> eastAppropriateEdgesDistance = new Dictionary<Curve, double>();
+                    //            Dictionary<Curve, double> westAppropriateEdgesDistance = new Dictionary<Curve, double>();
+
+                    //            foreach (Curve edge in northAppropriateEdges)
+                    //            {
+                    //                northAppropriateEdgesDistance.Add(edge, northDistances[landCurves.IndexOf(edge)]);
+                    //            }
+
+                    //            foreach (Curve edge in southAppropriateEdges)
+                    //            {
+                    //                southAppropriateEdgesDistance.Add(edge, southDistances[landCurves.IndexOf(edge)]);
+                    //            }
+
+                    //            foreach (Curve edge in eastAppropriateEdges)
+                    //            {
+                    //                eastAppropriateEdgesDistance.Add(edge, eastDistances[landCurves.IndexOf(edge)]);
+                    //            }
+
+                    //            foreach (Curve edge in westAppropriateEdges)
+                    //            {
+                    //                westAppropriateEdgesDistance.Add(edge, westDistances[landCurves.IndexOf(edge)]);
+                    //            }
+
+                    //            // 计算合适的角度
+
+                    //            //Dictionary<Curve, double> northAppropriateEdgesAngle = new Dictionary<Curve, double>();
+                    //            //Dictionary<Curve, double> southAppropriateEdgesAngle = new Dictionary<Curve, double>();
+                    //            //Dictionary<Curve, double> eastAppropriateEdgesAngle = new Dictionary<Curve, double>();
+                    //            //Dictionary<Curve, double> westAppropriateEdgesAngle = new Dictionary<Curve, double>();
+
+                    //            //foreach (Curve edge in northAppropriateEdges)
+                    //            //{
+                    //            //    northAppropriateEdgesAngle.Add(edge, northAngles[landCurves.IndexOf(edge)]);
+                    //            //}
+
+                    //            //foreach (Curve edge in southAppropriateEdges)
+                    //            //{
+                    //            //    southAppropriateEdgesAngle.Add(edge, southAngles[landCurves.IndexOf(edge)]);
+                    //            //}
+
+                    //            //foreach (Curve edge in eastAppropriateEdges)
+                    //            //{
+                    //            //    eastAppropriateEdgesAngle.Add(edge, eastAngles[landCurves.IndexOf(edge)]);
+                    //            //}
+
+                    //            //foreach (Curve edge in westAppropriateEdges)
+                    //            //{
+                    //            //    westAppropriateEdgesAngle.Add(edge, westAngles[landCurves.IndexOf(edge)]);
+                    //            //}
+
+                    //            //---------------------------以下是评分------------------------------
+
+                    //        //// 评分
+                    //        //Dictionary<Curve, double> northScore = new Dictionary<Curve, double>();
+                    //        //Dictionary<Curve, double> southScore = new Dictionary<Curve, double>();
+                    //        //Dictionary<Curve, double> eastScore = new Dictionary<Curve, double>();
+                    //        //Dictionary<Curve, double> westScore = new Dictionary<Curve, double>();
+
+                    //            //foreach (Curve edge in landCurves)
+                    //            //{
+                    //            //    if (northAppropriateEdges.Contains(edge))
+                    //            //    {
+                    //            //        northScore[edge] = SetScore(northAppropriateEdgesAngle[edge], northAppropriateEdgesDistance[edge], maxLength);
+                    //            //    }
+
+                    //            //    if (southAppropriateEdges.Contains(edge))
+                    //            //    {
+                    //            //        southScore[edge] = SetScore(southAppropriateEdgesAngle[edge], southAppropriateEdgesDistance[edge], maxLength);
+                    //            //    }
+
+                    //            //    if (eastAppropriateEdges.Contains(edge))
+                    //            //    {
+                    //            //        eastScore[edge] = SetScore(eastAppropriateEdgesAngle[edge], eastAppropriateEdgesDistance[edge], maxLength);
+                    //            //    }
+
+                    //            //    if (westAppropriateEdges.Contains(edge))
+                    //            //    {
+                    //            //        westScore[edge] = SetScore(westAppropriateEdgesAngle[edge], westAppropriateEdgesDistance[edge], maxLength);
+                    //            //    }
+
+                    //            //// 首次区分
+
+                    //            //List<Curve> judgeList = new List<Curve>();
+                    //            //List<Curve> firstCandidates = new List<Curve>();
+                    //            //firstCandidates.AddRange(northAppropriateEdges);
+                    //            //firstCandidates.AddRange(southAppropriateEdges);
+                    //            //firstCandidates.AddRange(eastAppropriateEdges);
+                    //            //firstCandidates.AddRange(westAppropriateEdges);
+
+                    //            // 首次区分方向的结果
+                    //        var relationshipDicFirst = new Dictionary<string, List<Curve>>()
+                    //        {
+                    //            {"north", new List<Curve>() },
+                    //            {"south", new List<Curve>() },
+                    //            {"east", new List<Curve>() },
+                    //            {"west", new List<Curve>() }
+                    //        };
+
+                    //            // 挑选四个方向的AppropriateEdgesDistance最小的值所对应的key，加入到relationshipDicFirst的对应方向中
+
+                    //            double minNorthDistance = northAppropriateEdgesDistance.Values.Min();
+                    //            double minSouthDistance = southAppropriateEdgesDistance.Values.Min();
+                    //            double minEastDistance = eastAppropriateEdgesDistance.Values.Min();
+                    //            double minWestDistance = westAppropriateEdgesDistance.Values.Min();
+
+                    //            // 通过以上的值搜索对应的key，并加入到relationshipDicFirst的对应方向中，四个方向的key值不会重复，各一个
+
+                    //            List<Curve> judgeListFirst = new List<Curve>();
+
+                    //            foreach (Curve appropriate in northAppropriateEdgesDistance.Keys)
+                    //            {
+                    //                if (northAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    //                {
+                    //                    relationshipDicFirst["north"].Add(appropriate);
+                    //                    judgeListFirst.Add(appropriate);
+                    //                }
+                    //            }
+                    //            foreach (Curve appropriate in southAppropriateEdgesDistance.Keys)
+                    //            {
+                    //                if (southAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    //                {
+                    //                    relationshipDicFirst["south"].Add(appropriate);
+                    //                    judgeListFirst.Add(appropriate);
+                    //                }
+                    //            }
+
+                    //            foreach (Curve appropriate in eastAppropriateEdgesDistance.Keys)
+                    //            {
+                    //                if (eastAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    //                {
+                    //                    relationshipDicFirst["east"].Add(appropriate);
+                    //                    judgeListFirst.Add(appropriate);
+                    //                }
+                    //            }
+
+                    //            foreach (Curve appropriate in westAppropriateEdgesDistance.Keys)
+                    //            {
+                    //                if (westAppropriateEdgesDistance[appropriate] == minNorthDistance && !judgeListFirst.Contains(appropriate))
+                    //                {
+                    //                    relationshipDicFirst["west"].Add(appropriate);
+                    //                    judgeListFirst.Add(appropriate);
+                    //                }
+                    //            }
+
+                    //            //// ------------------------ 以下方法做存档，暂时弃用 -----------------------------------------
+
+                    //            //// 将四个方向上适宜作为第一个顶点的边添加到firstCandidates列表中
+
+                    //            //foreach (Curve landCurve in landCurves)
+                    //            //{
+                    //            //    if (northScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
+                    //            //    {
+                    //            //        // 如果边在northScore字典中且还没有被处理过
+                    //            //        if (northScore[landCurve] == northScore.Values.Max() && relationshipDicFirst["north"].Count == 0)
+                    //            //        {
+                    //            //            // 如果边的分数是northScore中最大的，并且还没有确定过north方向的第一个顶点
+                    //            //            relationshipDicFirst["north"].Add(landCurve);
+                    //            //            judgeList.Add(landCurve);
+                    //            //        }
+                    //            //    }
+
+                    //            //    if (southScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
+                    //            //    {
+                    //            //        // 如果边在southScore字典中且还没有被处理过
+                    //            //        if (southScore[landCurve] == southScore.Values.Max() && relationshipDicFirst["south"].Count == 0)
+                    //            //        {
+                    //            //            // 如果边的分数是southScore中最大的，并且还没有确定过south方向的第一个顶点
+                    //            //            relationshipDicFirst["south"].Add(landCurve);
+                    //            //            judgeList.Add(landCurve);
+                    //            //        }
+                    //            //    }
+
+                    //            //    if (eastScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
+                    //            //    {
+                    //            //        // 如果边在eastScore字典中且还没有被处理过
+                    //            //        if (eastScore[landCurve] == eastScore.Values.Max() && relationshipDicFirst["east"].Count == 0)
+                    //            //        {
+                    //            //            // 如果边的分数是eastScore中最大的，并且还没有确定过east方向的第一个顶点
+                    //            //            relationshipDicFirst["east"].Add(landCurve);
+                    //            //            judgeList.Add(landCurve);
+                    //            //        }
+                    //            //    }
+
+                    //            //    if (westScore.ContainsKey(landCurve) && !judgeList.Contains(landCurve))
+                    //            //    {
+                    //            //        // 如果边在westScore字典中且还没有被处理过
+                    //            //        if (westScore[landCurve] == westScore.Values.Max() && relationshipDicFirst["west"].Count == 0)
+                    //            //        {
+                    //            //            // 如果边的分数是westScore中最大的，并且还没有确定过west方向的第一个顶点
+                    //            //            relationshipDicFirst["west"].Add(landCurve);
+                    //            //            judgeList.Add(landCurve);
+                    //            //        }
+                    //            //    }
+
+                    //            // -----------------------------进行方向检查并且重新调整--------------------------
+                    //            // 建立一个字典，四个方向为key，value是朝向四个方向的四个单位向量
+                    //            var directionDic = new Dictionary<string, Vector3d>()
+                    //            {
+                    //                {"north", new Vector3d(0, 1, 0) },
+                    //                {"south", new Vector3d(0, -1, 0) },
+                    //                {"east", new Vector3d(1, 0, 0) },
+                    //                {"west", new Vector3d(-1, 0, 0) }
+                    //            };
+
+                    //            // 确认现在的landCurves中所有不在judgeListFirst中的边
+                    //            Curve[] unusedFirst = new Curve[landCurves.Count - judgeListFirst.Count];
+
+                    //            int unusedFirstIndex = 0;
+
+                    //            foreach (Curve curve in landCurves)
+                    //            {
+                    //                if (!judgeListFirst.Contains(curve))
+                    //                {
+                    //                    unusedFirst[unusedFirstIndex] = curve;
+                    //                    unusedFirstIndex++;
+                    //                }
+                    //            }
+
+                    //            //// ----------------------------------生成东西区域--------------------------------------------
+
+                    //            // 求出relationshipDicFirst中南北两个方向现在有的curve的中点
+                    //            Point3d northMidPoint = new Point3d();
+                    //            Point3d southMidPoint = new Point3d();
+
+                    //            foreach (Curve curve in relationshipDicFirst["north"])
+                    //            {
+                    //                northMidPoint = curve.PointAtNormalizedLength(0.5);
+                    //            }
+
+                    //            foreach (Curve curve in relationshipDicFirst["south"])
+                    //            {
+                    //                southMidPoint = curve.PointAtNormalizedLength(0.5);
+                    //            }
+
+                    //            // 两点连线，将这条线向东向西分别拷贝一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    //            LineCurve northSouthLine = new LineCurve(northMidPoint, southMidPoint);
+
+                    //            LineCurve eastLine = (LineCurve)northSouthLine.DuplicateCurve();
+                    //            LineCurve westLine = (LineCurve)northSouthLine.DuplicateCurve();
+
+                    //            //// 原版起止点
+                    //            //Point3d originStartPoint = northMidPoint;
+                    //            //Point3d originEndPoint = southMidPoint;
+
+                    //            //将两条线向东向西分别复制一份，距离为100000，然后获得原版与拷贝结果的起止点
+                    //            LineCurve eastCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    //            eastCup.Transform(Transform.Translation(100000 * directionDic["east"]));
+
+                    //            LineCurve westCup = (LineCurve)northSouthLine.DuplicateCurve();
+                    //            westCup.Transform(Transform.Translation(100000 * directionDic["west"]));
+
+                    //            Point3d eastCupStartPoint = eastLine.PointAtStart;
+                    //            Point3d eastCupEndPoint = eastLine.PointAtEnd;
+
+                    //            Point3d westCupStartPoint = westLine.PointAtStart;
+                    //            Point3d westCupEndPoint = westLine.PointAtEnd;
+
+                    //            // 分别将原版的起点终点，与拷贝点的起点终点连线，并组合这些曲线，成两个方向的两条闭合曲线。
+
+                    //            LineCurve eastZoneStartCurve = new LineCurve(northMidPoint, eastCupStartPoint);
+                    //            LineCurve eastZoneEndCurve = new LineCurve(southMidPoint, eastCupEndPoint);
+                    //            LineCurve[] eastZoneLines = new LineCurve[4] { eastZoneStartCurve, eastZoneEndCurve, eastCup, eastLine };
+
+                    //            var eastZone = LineCurve.JoinCurves(eastZoneLines)[0];
+                    //            //LineCurve eastZone = LineCurve.JoinCurves(eastZoneLines);
+
+                    //            LineCurve westZoneStartCurve = new LineCurve(northMidPoint, westCupStartPoint);
+                    //            LineCurve westZoneEndCurve = new LineCurve(southMidPoint, westCupEndPoint);
+                    //            LineCurve[] westZoneLines = new LineCurve[4] { westZoneStartCurve, westZoneEndCurve, westCup, westLine };
+
+                    //            var westZone = LineCurve.JoinCurves(westZoneLines)[0];
+
+                    //            //// -----------------------------------------生成东西区域结束--------------------------------------------
+
+
+
+                    //            //---------------------------对于第二次的结果进行Debug----------------------------------
+
+                    //        // 定义调试的关系字典,这个字典里面装的是正确的最终分隔结果
+                    //        Dictionary<string, List<Curve>> debuggedRelationshipDict = new Dictionary<string, List<Curve>>
+                    //        {
+                    //            { "north", new List<Curve>() },
+                    //            { "south", new List<Curve>() },
+                    //            { "east", new List<Curve>() },
+                    //            { "west", new List<Curve>() }
+                    //        };
+
+                    //            Dictionary<string, string> negativeDirectionDict = new Dictionary<string, string>
+                    //        {
+                    //            {"north", "south"},
+                    //            {"south", "north"},
+                    //            {"east", "west"},
+                    //            {"west", "east"}
+                    //        };
+
+                    //            //// 定义判断偏移的值
+                    //            //double judgeOffsetValue = 0.05;
+
+                    //            // 所有被处理过的边都会存放在这里
+                    //            List<Curve> relationshipList = new List<Curve>();
+
+                    //            foreach (KeyValuePair<string, List<Curve>> item in relationshipDicFirst)
+                    //            {
+                    //                relationshipList.AddRange(item.Value);
+                    //            }
+
+                    //            // # 如果关系列表中的边数等于总边数，则进行方向判断并debug
+                    //            if (relationshipList.Count == edgeCount)
+                    //            {
+                    //                foreach (KeyValuePair<string, List<Curve>> directionWithEdge in relationshipDicFirst)
+                    //                {
+                    //                    // 获取方向和边列表
+                    //                    string direction = directionWithEdge.Key;
+                    //                    List<Curve> edgeList = directionWithEdge.Value;
+
+                    //                    foreach (Curve edge in edgeList)
+                    //                    {
+                    //                        // 获取相反方向和偏移后的边
+                    //                        string negativeDirection = negativeDirectionDict[direction];
+                    //                        Point3d offsetPoint = JudgePointOfDispatch(edge, negativeDirection, directionDic);
+
+                    //                        // 新方法，直接用offsetPoint判断
+
+                    //                        // 不在land内则证明其方向是错误的，正确方向是其现在方向的反方向
+                    //                        if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                    //                        {
+                    //                            if (!debuggedRelationshipDict[negativeDirection].Contains(edge))
+                    //                            {
+                    //                                debuggedRelationshipDict[negativeDirection].Add(edge);
+                    //                            }
+                    //                        }
+                    //                        // 在land内则表示，其方向是正确的
+                    //                        else
+                    //                        {
+                    //                            if (!debuggedRelationshipDict[direction].Contains(edge))
+                    //                            {
+                    //                                debuggedRelationshipDict[direction].Add(edge);
+                    //                            }
+                    //                        }
+                    //                    }
+                    //                }
+                    //            }
+                    //            // 如果关系列表中的边数不等于总边数，则肯定漏掉了边
+                    //            else if (relationshipList.Count != edgeCount)
+                    //            {
+                    //                // 判断 landCurves 中有哪些边没有被处理过
+                    //                List<Curve> unhandledCurves = landCurves.Except(relationshipList).ToList();
+
+                    //                // 将未处理的边加入到正确的方向中
+                    //                foreach (Curve unhandledCurve in unhandledCurves)
+                    //                {
+                    //                    // 先假设其归属为东，获取相反方向和偏移后的边
+                    //                    //string negativeDirection = negativeDirectionDict["east"];
+
+                    //                    string negativeDirection = "west";
+                    //                    Point3d offsetPoint = JudgePointOfDispatch(unhandledCurve, negativeDirection, directionDic);
+
+                    //                    // 不在land内则证明东方向是错误的，正确方向是其现在方向的反方向-西
+                    //                    if (landCurve.Contains(offsetPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) != PointContainment.Inside)
+                    //                    {
+                    //                        if (!debuggedRelationshipDict[negativeDirection].Contains(unhandledCurve))
+                    //                        {
+                    //                            debuggedRelationshipDict[negativeDirection].Add(unhandledCurve);
+                    //                        }
+                    //                    }
+                    //                    // 在land内则表示，其方向是正确的
+                    //                    else
+                    //                    {
+                    //                        if (!debuggedRelationshipDict["east"].Contains(unhandledCurve))
+                    //                        {
+                    //                            debuggedRelationshipDict["east"].Add(unhandledCurve);
+                    //                        }
+                    //                    }
+                    //                }
+                    //            }
+
+                    //            // 如果所有方向都没有成功调试，就使用原始的关系字典。这种情况出现在地块太细或者太窄了
+                    //            if (debuggedRelationshipDict.Values.All(list => list.Count == 0))
+                    //            {
+                    //                debuggedRelationshipDict = relationshipDicFirst;
+                    //            }
+
+                    //            if (edgeCount >= 4)
+                    //            {
+                    //                if (debuggedRelationshipDict["north"].Count == 0
+                    //                    || debuggedRelationshipDict["south"].Count == 0
+                    //                    || debuggedRelationshipDict["east"].Count == 0
+                    //                    || debuggedRelationshipDict["west"].Count == 0)
+                    //                {
+                    //                    // --------------------------------------生成区域--------------------------------------------
+                    //                    double offset = 1;
+
+                    //                    BoundingBox boundingBox = closeCurve.GetBoundingBox(true);
+
+                    //                    //double bblength;
+                    //                    //double bbwidth;
+                    //                    //if(boundingBox.Diagonal.X >= boundingBox.Diagonal.Y)
+                    //                    //{
+                    //                    //    bblength = boundingBox.Diagonal.X;
+                    //                    //    bbwidth = boundingBox.Diagonal.Y;
+                    //                    //}
+                    //                    //else
+                    //                    //{
+                    //                    //    bblength = boundingBox.Diagonal.Y;
+                    //                    //    bbwidth = boundingBox.Diagonal.X;
+                    //                    //}
+
+                    //                    double offsetOriginX = boundingBox.Diagonal.X / 3;
+                    //                    double offsetOriginY = boundingBox.Diagonal.Y / 3;
+
+                    //                    Point3d center = boundingBox.Center;
+
+                    //                    Point3d horizontalStart = new Point3d(center.X, boundingBox.Min.Y, 0);
+                    //                    Point3d horizontalEnd = new Point3d(center.X, boundingBox.Max.Y, 0);
+
+                    //                    Point3d verticalStart = new Point3d(boundingBox.Min.X, center.Y, 0);
+                    //                    Point3d verticalEnd = new Point3d(boundingBox.Max.X, center.Y, 0);
+
+                    //                    Vector3d diagonal = boundingBox.Diagonal;
+                    //                    double length = diagonal.Length;
+                    //                    double extensionFactor = length / 2.0;
+
+                    //                    Point3d horizontalStartExtended = Point3d.Add(horizontalStart, new Vector3d(horizontalStart - center) * extensionFactor);
+                    //                    Point3d horizontalEndExtended = Point3d.Add(horizontalEnd, new Vector3d(horizontalEnd - center) * extensionFactor);
+
+                    //                    Point3d verticalStartExtended = Point3d.Add(verticalStart, new Vector3d(verticalStart - center) * extensionFactor);
+                    //                    Point3d verticalEndExtended = Point3d.Add(verticalEnd, new Vector3d(verticalEnd - center) * extensionFactor);
+
+                    //                    Point3d leftStart = new Point3d(horizontalStartExtended.X - diagonal.X / 2.0 - offset, horizontalStartExtended.Y, 0);
+                    //                    Point3d leftEnd = new Point3d(horizontalEndExtended.X - diagonal.X / 2.0 - offset, horizontalEndExtended.Y, 0);
+
+                    //                    Point3d rightStart = new Point3d(horizontalStartExtended.X + diagonal.X / 2.0 + offset, horizontalStartExtended.Y, 0);
+                    //                    Point3d rightEnd = new Point3d(horizontalEndExtended.X + diagonal.X / 2.0 + offset, horizontalEndExtended.Y, 0);
+
+                    //                    Point3d topStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y + diagonal.Y / 2.0 + offset, 0);
+                    //                    Point3d topEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y + diagonal.Y / 2.0 + offset, 0);
+
+                    //                    Point3d bottomStart = new Point3d(verticalStartExtended.X, verticalStartExtended.Y - diagonal.Y / 2.0 - offset, 0);
+                    //                    Point3d bottomEnd = new Point3d(verticalEndExtended.X, verticalEndExtended.Y - diagonal.Y / 2.0 - offset, 0);
+
+                    //                    // Generate the left, right, top, and bottom zones
+                    //                    /*Curve*/ westZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, leftStart, leftEnd);
+                    //                    westZone.Translate(new Vector3d(-offsetOriginX, 0, 0));
+
+                    //                    /*Curve*/ eastZone = GenerateZone(horizontalStartExtended, horizontalEndExtended, rightStart, rightEnd);
+                    //                    eastZone.Translate(new Vector3d(offsetOriginX, 0, 0));
+
+                    //                    Curve northZone = GenerateZone(verticalStartExtended, verticalEndExtended, topStart, topEnd);
+                    //                    northZone.Translate(new Vector3d(0, offsetOriginY, 0));
+
+                    //                    Curve southZone = GenerateZone(verticalStartExtended, verticalEndExtended, bottomStart, bottomEnd);
+                    //                    southZone.Translate(new Vector3d(0, -offsetOriginY, 0));
+
+                    //                    // Function to generate a zone
+                    //                    Curve GenerateZone(Point3d startExtended, Point3d endExtended, Point3d start, Point3d end)
+                    //                    {
+                    //                        LineCurve upCurve = new LineCurve(startExtended, start);
+                    //                        LineCurve downCurve = new LineCurve(endExtended, end);
+                    //                        LineCurve startCurve = new LineCurve(startExtended, endExtended);
+                    //                        LineCurve endCurve = new LineCurve(start, end);
+
+                    //                        Curve[] curves = new Curve[] { upCurve, downCurve, startCurve, endCurve };
+
+                    //                        return Curve.JoinCurves(curves)[0];
+                    //                    }
+
+
+                    //                    Dictionary<Point3d, Curve> curveMidpt = unusedFirst.ToDictionary(crv => crv.PointAtNormalizedLength(0.5));
+
+                    //                    foreach (var pt in curveMidpt.Keys)
+                    //                    {
+                    //                        if (westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            || westZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+                    //                        {
+                    //                            relationshipDicFirst["west"].Add(curveMidpt[pt]);
+                    //                        }
+                    //                        else if (eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            || eastZone.Contains(pt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+                    //                        {
+                    //                            relationshipDicFirst["east"].Add(curveMidpt[pt]);
+                    //                        }
+                    //                    }
+
+                    //                    // -------------------------------------区域完--------------------------------------------------
+
+                    //                    var newDebuggedRelationshipDict = new Dictionary<string, List<Curve>>
+                    //                {
+                    //                    { "north", new List<Curve>() },
+                    //                    { "south", new List<Curve>() },
+                    //                    { "east", new List<Curve>() },
+                    //                    { "west", new List<Curve>() }
+                    //                };
+
+                    //                    List<Curve> haveBeenUsed = new List<Curve>();
+
+                    //                    foreach (Curve landEdge in landCurves)
+                    //                    {
+                    //                        Point3d midpt = landEdge.PointAtNormalizedLength(0.5);
+
+                    //                        if (northZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            && !haveBeenUsed.Contains(landEdge))
+                    //                        {
+                    //                            newDebuggedRelationshipDict["north"].Add(landEdge);
+                    //                            haveBeenUsed.Add(landEdge);
+                    //                        }
+                    //                        else if (southZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            && !haveBeenUsed.Contains(landEdge))
+                    //                        {
+                    //                            newDebuggedRelationshipDict["south"].Add(landEdge);
+                    //                            haveBeenUsed.Add(landEdge);
+                    //                        }
+                    //                        else if (westZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            && !haveBeenUsed.Contains(landEdge))
+                    //                        {
+                    //                            newDebuggedRelationshipDict["west"].Add(landEdge);
+                    //                            haveBeenUsed.Add(landEdge);
+                    //                        }
+                    //                        else if (eastZone.Contains(midpt, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                    //                            && !haveBeenUsed.Contains(landEdge))
+                    //                        {
+                    //                            newDebuggedRelationshipDict["east"].Add(landEdge);
+                    //                            haveBeenUsed.Add(landEdge);
+                    //                        }
+                    //                    }
+                    //                    if (haveBeenUsed.Count == landCurves.Count)
+                    //                        debuggedRelationshipDict = newDebuggedRelationshipDict;
+                    //                    else
+                    //                    {
+                    //                        foreach (Curve curve in landCurves)
+                    //                        {
+                    //                            if (haveBeenUsed.Contains(curve))
+                    //                                continue;
+                    //                            else
+                    //                            {
+                    //                                foreach (string direction in newDebuggedRelationshipDict.Keys)
+                    //                                {
+                    //                                    if (debuggedRelationshipDict[direction].Contains(curve))
+                    //                                    {
+                    //                                        newDebuggedRelationshipDict[direction].Add(curve);
+                    //                                    }
+                    //                                }
+                    //                            }
+                    //                        }
+                    //                        debuggedRelationshipDict = newDebuggedRelationshipDict;
+
+                    //                    }
+                    //                }
+                    //            }
+
+
+                    //            return debuggedRelationshipDict;
+                    //        }
+
+                    //        else
+                    //        {
+                    //            throw new ArgumentOutOfRangeException(nameof(edgeCount), "Negative edgeCount");
+                    //        }
+                }
             }
 
         }
+            /*-----------------------------------地块位于边缘处理方法--------------------------------------------*/
 
-        /*-----------------------------------地块位于边缘处理方法--------------------------------------------*/
-
-        /// <summary>
-        /// 判断地块是否位于边界上，如果位于边界上，则将其分为两个relationship，一个是位于边界上的，一个是不位于边界上的。
-        /// </summary>
-        /// <param name="relationshipDict">分好了方向的relationship。</param>
-        /// <param name="baseIsTheBoundage">基地的边缘线。</param>
-        /// <param name="notOnBoundageDic">不位于边界上的relationship。</param>
-        /// <param name="onBoundageDic">位于边界上的relationship。</param>
-        /// <returns>无return</returns>
-        public bool BoundageOrNot
+            /// <summary>
+            /// 判断地块是否位于边界上，如果位于边界上，则将其分为两个relationship，一个是位于边界上的，一个是不位于边界上的。
+            /// </summary>
+            /// <param name="relationshipDict">分好了方向的relationship。</param>
+            /// <param name="baseIsTheBoundage">基地的边缘线。</param>
+            /// <param name="notOnBoundageDic">不位于边界上的relationship。</param>
+            /// <param name="onBoundageDic">位于边界上的relationship。</param>
+            /// <returns>无return</returns>
+            public bool BoundageOrNot
             (Dictionary<string, List<Curve>> relationshipDict, 
             Curve baseIsTheBoundage, 
             out Dictionary<string, List<Curve>> onBoundageDic, 
@@ -1010,22 +2193,20 @@ namespace TianParameterModelForOpt
 
                 foreach (Curve edge in relationshipDict[direction])
                 {
-                        
-                    //// 老方法：求取edge的中点并画出一个圆，判断圆是否与base相交
-                    //Point3d midPoint = edge.PointAtNormalizedLength(0.5);
-                    //Circle circle = new Circle(midPoint, 0.1);
 
-
-                    // 新方法，求取edge的中点并判断是否在base上
+                    //// 新方法，求取edge的中点并判断是否在base上
+                    //Point3d startPoint = edge.PointAtStart;
+                    //Point3d endPoint = edge.PointAtEnd;
                     Point3d midPoint = edge.PointAtNormalizedLength(0.5);
-                        
-                    if (baseIsTheBoundage.Contains(midPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+
+                    //if(Find.CheckOverlap(baseIsTheBoundage, edge) == true)
+
+                    if (baseIsTheBoundage.Contains(midPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident
+/*                        && baseIsTheBoundage.Contains(startPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident
+                        && baseIsTheBoundage.Contains(endPoint, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident*/)
                     {
-                        //if (!directionHaveBeenProcessed.Contains(direction))
-                        //{
                         onBoundageDic[direction].Add(edge);
-                        //    directionHaveBeenProcessed.Add(direction);
-                        //}
+
                         // 如果存在一条边与base的边界重合，则这个land被标记为“Boundage”
                         isBoundageOrNot = true;
 
@@ -1321,6 +2502,233 @@ namespace TianParameterModelForOpt
                 return null;
             }
         }
+
+
+
+        public Curve RepairLand(Curve landCurve)
+        {
+            var a = AreaMassProperties.Compute(landCurve).Area;
+            var b = GetShortestEndDepth() * GetShortestBLength();
+
+            if (isOnShortest == false 
+                || landCurve.SpanCount < 4 
+                || AreaMassProperties.Compute(landCurve).Area <= GetShortestEndDepth() * GetShortestBLength() )
+            {
+                return landCurve;
+            }
+            else
+            {
+                // 先拆
+                var landCurves = new List<Curve>();
+                Curve[] segments = landCurve.DuplicateSegments();
+                if (segments != null && segments.Length > 0)
+                {
+                    landCurves.AddRange(segments);
+                }
+                if (landCurves.Count <= 3)
+                {
+                    return landCurve;
+                }
+
+                //找临边
+                Curve insideSubtitudeCurve = null;
+
+                Curve needToAbandonCurve;
+                Curve shortestItSelf;
+
+                List<Curve> unusedCurves = new List<Curve> ();
+
+                Curve targetCurve = this.shortestEdgeOfLand;
+                Point3d targetStart = targetCurve.PointAtStart;
+                Point3d targetEnd = targetCurve.PointAtEnd;
+
+                Point3d centroidOfBase = AreaMassProperties.Compute(this.baseCurve).Centroid;
+
+                double distanceToStart = centroidOfBase.DistanceTo(targetStart);
+                double distanceToEnd = centroidOfBase.DistanceTo(targetEnd);
+
+                Point3d insidept;
+                Point3d outsidept;
+
+                // 举例质心远的那个是外侧点
+                if(distanceToStart < distanceToEnd)
+                {
+                    insidept = targetCurve.PointAtStart;
+                    outsidept = targetCurve.PointAtEnd;
+                }
+                else
+                {
+                    insidept = targetCurve.PointAtEnd;
+                    outsidept = targetCurve.PointAtStart;
+                }
+
+                //// 举例质心远的那个是外侧点
+                //if (distanceToStart < distanceToEnd)
+                //{
+                //    insidept = targetCurve.PointAtStart;
+                //    outsidept = targetCurve.PointAtEnd;
+                //}
+                //else
+                //{
+                //    insidept = targetCurve.PointAtEnd;
+                //    outsidept = targetCurve.PointAtStart;
+                //}
+
+                foreach (Curve curve in landCurves)
+                {
+
+                    // 获取当前曲线的端点
+                    Point3d curveStart = curve.PointAtStart;
+                    Point3d curveEnd = curve.PointAtEnd;
+
+                    // 检查曲线的端点是否与目标曲线的端点重合
+                    //if (curve.IsEquals(this.shortestEdgeOfLand))
+                    if (Find.CheckOverlap(curve, targetCurve))
+                    {
+                        if (!unusedCurves.Contains(curve))
+                        {
+                            shortestItSelf = curve;
+                            unusedCurves.Add(curve);
+                        }
+                    }
+
+                    // 检查曲线的端点是否与目标曲线的起始点重合
+                    else if (curveStart.DistanceTo(outsidept) < RhinoMath.ZeroTolerance || curveEnd.DistanceTo(outsidept) < RhinoMath.ZeroTolerance) // 操作2
+                    {
+                        // 在这里执行操作...
+                        System.Console.WriteLine("点重外测，不保留");
+                        if (!unusedCurves.Contains(curve))
+                        {
+                            needToAbandonCurve = curve;
+                            unusedCurves.Add(curve);
+                        }
+                    }
+
+                    else if (curveStart.DistanceTo(insidept) < RhinoMath.ZeroTolerance || curveEnd.DistanceTo(insidept) < RhinoMath.ZeroTolerance) // 操作1
+                    {
+                        // 在这里执行操作...
+                        System.Console.WriteLine("点重内测，保留");
+                        //if (/*!unusedCurves.Contains(curve)*/ insideSubtitudeCurve == null)
+                        if (insideSubtitudeCurve == null && !unusedCurves.Contains(curve))
+                        {
+                            insideSubtitudeCurve = curve;
+                        }
+                    }
+
+                    //// 检查当前曲线是否与目标曲线重叠
+                    //CurveIntersections inter = Intersection.CurveCurve(curve, targetCurve, RhinoMath.ZeroTolerance, RhinoMath.ZeroTolerance);
+                    //if (inter != null && inter.Count > 0)
+                    //{
+                    //    foreach (IntersectionEvent ie in inter)
+                    //    {
+                    //        if (ie.IsOverlap) // 操作3
+                    //        {
+                    //            // 在这里执行操作...
+                    //            System.Console.WriteLine("操作3：当前曲线与目标曲线重叠");
+                    //        }
+                    //    }
+                    //}
+
+                    //double paraStart;
+                    //double paraEnd;
+                    //var closeStartPoint = this.shortestEdge.ClosestPoint(curve.PointAtStart, out paraStart);
+                    //var closeEndPoint = this.shortestEdge.ClosestPoint(curve.PointAtEnd, out paraEnd);
+
+                    //if (curve.PointAt(paraStart).DistanceTo(shortestEdge.PointAtStart) < 0.001 ||
+                    //    curve.PointAt(paraStart).DistanceTo(shortestEdge.PointAtEnd) < 0.001)
+                    //{
+                    //    adjCurves.Add(curve);
+                    //}
+                    //else if (curve.PointAt(paraEnd).DistanceTo(shortestEdge.PointAtStart) < 0.001 ||
+                    //    curve.PointAt(paraEnd).DistanceTo(shortestEdge.PointAtEnd) < 0.001)
+                    //{
+                    //    adjCurves.Add(curve);
+                    //}
+
+                    //if(curve.PointAt(paraEnd).DistanceTo(shortestEdge.PointAtEnd) < 0.001)
+                    // ------------------------------------------- 
+
+                    //if (curve.PointAtStart.Equals(this.shortestEdge.PointAtEnd) 
+                    //    || curve.PointAtEnd.Equals(this.shortestEdge.PointAtEnd))
+                    //{
+                    //    insideSubtitudeCurve = curve;
+                    //    //unusedCurves.Add(curve);
+                    //}
+                    //else if (curve.PointAtStart.Equals(this.shortestEdge.PointAtStart)
+                    //    || curve.PointAtEnd.Equals(this.shortestEdge.PointAtStart) )
+                    //{
+                    //    needToAbandonCurve = curve;
+                    //    unusedCurves.Add(curve);
+                    //}
+                    //else if (Find.CheckOverlap(this.shortestEdge, curve) == true)
+                    //{
+                    //    shortestItSelf = curve;
+                    //    unusedCurves.Add(curve);
+                    //}
+                    //--------------------------------------------
+
+
+                }
+                //生成新的图形
+                var adjCurves = new List<Curve>();
+                foreach(Curve curve in landCurves)
+                {
+                    if(! unusedCurves.Contains(curve))
+                    {
+                        adjCurves.Add(curve);
+                    }
+                }
+
+                List<Point3d> intersections = new List<Point3d>();
+                foreach(Curve curve1 in adjCurves)
+                {
+                    foreach(Curve curve2 in adjCurves)
+                    {
+                        if (! curve1.Equals(curve2))
+                        {
+                            var ccInters = Rhino.Geometry.Intersect.Intersection.CurveCurve(curve1, curve2, Rhino.RhinoMath.ZeroTolerance, Rhino.RhinoMath.ZeroTolerance);
+                            if (ccInters != null && ccInters.Count != 0)
+                            {
+                                if (landCurve.Contains(ccInters[0].PointA, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside
+                                    || landCurve.Contains(ccInters[0].PointA, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident)
+                                { 
+                                    intersections.Add(ccInters[0].PointA); 
+                                }
+                            }
+                            
+                            else
+                            {
+                                Line line1 = new Line(curve1.PointAtStart, curve1.PointAtEnd);
+                                Line line2 = new Line(curve2.PointAtStart, curve2.PointAtEnd);
+
+                                double para1;
+                                double para2;
+                                var llInters = Rhino.Geometry.Intersect.Intersection.LineLine(line1, line2, out para1, out para2, Rhino.RhinoMath.ZeroTolerance, false);
+                                
+                                if (llInters == true 
+                                    && (landCurve.Contains( line1.PointAt(para1), Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Inside 
+                                    || landCurve.Contains(line1.PointAt(para1), Rhino.Geometry.Plane.WorldXY, absulatTolerance) == PointContainment.Coincident))
+                                {
+                                    intersections.Add(line1.PointAt(para1));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 连接图形
+                List<Point3d> newArray = Point3d.SortAndCullPointList(intersections, 0.001).ToList();
+
+                Curve newLandCurve = new PolylineCurve(newArray);
+                if (!newLandCurve.IsClosed)
+                {
+                    newArray.Add(newLandCurve.PointAtStart);
+                    newLandCurve = new PolylineCurve(newArray);
+                }
+                return newLandCurve;
+            }
+        }
+
     }
 
 

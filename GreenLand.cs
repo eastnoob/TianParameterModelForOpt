@@ -49,7 +49,7 @@ namespace TianParameterModelForOpt
         public Brep GreenLandGenerate(out double greenLandArea)
         {
             // 获得land图形
-            Curve landCurve = land.landCurve;
+            Curve landCurve = land.originalLandCurve;
             if (landCurve.IsPlanar() == false)
             {
                 // 将landCurve转换为XY平面上的平面投影曲线

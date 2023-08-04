@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using TianParameterModelForOpt._5_output;
 
 namespace TianParameterModelForOpt
 {
@@ -77,6 +78,7 @@ namespace TianParameterModelForOpt
 
             // allGreenLand，列表曲面，表达所有的绿地
             pManager.AddBrepParameter("AllGreenLand", "G", "AllGreenLand", GH_ParamAccess.list);
+
             //allBuildings, 列表brep，表达所有的建筑
             pManager.AddBrepParameter("AllBuildings", "B", "AllBuildings", GH_ParamAccess.tree);
 
@@ -213,11 +215,29 @@ namespace TianParameterModelForOpt
 
             while (landIndex < lands.Count)
             {
-                //var a = floorNum.ToString();
+
+
                 Rhino.RhinoApp.WriteLine("-------------------------------- New building ------------------------------------");
-                //Console.WriteLine("======================================== FloorNum: ======================================================" + floorNum.ToString());
+
+
                 // 初始化Land
                 Land thisLand = new Land(baseCurve, lands[landIndex], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
+
+                if (lands[landIndex].SpanCount < 4 || AreaMassProperties.Compute(lands[landIndex]).Area <= thisLand.GetShortestEndDepth() * thisLand.GetShortestBLength())
+                {
+                    Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
+                    allBuildings.Add(null);
+
+                    // 绿地
+                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                    allGreenLand.Add(greenLand.greenLandBrep);
+
+                    // 绿地面积(单个)
+                    totalGreenLandArea += greenLand.greenLandArea;
+                    landIndex++;
+
+                    continue;
+                }
 
                 //------------------------------------------------以下用于测试-----------------------------------------------
 
@@ -247,8 +267,10 @@ namespace TianParameterModelForOpt
                     // 绿地面积(单个)
                     totalGreenLandArea += greenLand.greenLandArea;
 
-                    // ---------------------临时变量---------------------
-                    allFloorsPlanes.Add(null);
+                    // 参数
+                    totalBuildingArea += 0;
+                    totalConstructArea += 0;
+                    roomNum += 0;
                 }
                 else
                 {
@@ -265,8 +287,8 @@ namespace TianParameterModelForOpt
                     Trace.WriteLine("Floor number: " + floorNum[landIndex]);
 
                     // 初始化building
-                    try
-                    {
+/*                    try
+                    {*/
                         Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
 
                         //// 装载保存
@@ -307,8 +329,8 @@ namespace TianParameterModelForOpt
                             roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
                         }
 
-                    }
-                    catch (Exception ex)
+/*                    }
+                    catch (Exception)
                     {
                         //// 装载保存
                         allBuildings.Add(new List<Brep>());
@@ -329,10 +351,10 @@ namespace TianParameterModelForOpt
                         roomNum += 0;
                         totalGreenLandArea += greenLandException.greenLandArea;
 
-                        landIndex++;
+                        //landIndex++;
 
                         continue;
-                    }
+                    }*/
 
                     ////-----------------------------------原有的程序-----------------------------------
 
@@ -417,22 +439,24 @@ namespace TianParameterModelForOpt
 
             // 转化为datatree
             var dataTree = new DataTree<Brep>();
+            dataTree = Output.ConvertListToDataTree(allBuildings);
 
-            if(allBuildings.Contains (null))
-            {
-                dataTree.Add(null);
-            }
-            else
-            {
-                for (int i = 0; i < allBuildings.Count; i++)
-                {
-                    for (int j = 0; j < allBuildings[i].Count; j++)
-                    {
-                        dataTree.Add(allBuildings[i][j], new GH_Path(i));
-                    }
-                }
+            //if(allBuildings.Contains (null))
+            //{
+            //    dataTree.Add(null);
+            //}
+            //else
+            //{
+            //    dataTree = Output.ConvertListToDataTree(allBuildings);
+            //    //for (int i = 0; i < allBuildings.Count; i++)
+            //    //{
+            //    //    for (int j = 0; j < allBuildings[i].Count; j++)
+            //    //    {
+            //    //        dataTree.Add(allBuildings[i][j], new GH_Path(i));
+            //    //    }
+            //    //}
 
-            }
+            //}
 
 
             //DA.SetDataTree(0, dataTree);

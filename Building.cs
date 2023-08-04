@@ -9,10 +9,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
+using System.Xml.Schema;
 using TianParameterModelForOpt._4_repair;
 using static Rhino.DocObjects.PhysicallyBasedMaterial;
 //using static Grasshopper.DataTree<T>;
@@ -104,7 +106,7 @@ namespace TianParameterModelForOpt
                 judgeBrep = GenerateTheBuildingBrepDirectly.CreateJudgeBrepBase(allEdgeWithOffsetBaseCurve, land, 100);
             }
 
-            judgeBrepArray = new Brep[] { judgeBrep };
+            this.judgeBrep = new Brep[] { judgeBrep };
 
 
 
@@ -236,13 +238,61 @@ namespace TianParameterModelForOpt
 
             var directionWithCurve = land.dispatchedEdges;
 
+
+            // 太小了久不参与实体的生成，让大的来顶上
+
+            //bool haveReallyShort = false;
+            List<Curve> landShortCurve = new List<Curve>();
+
+            //foreach (Curve landcurve in curveWithBrep.Keys)
+            //{
+            //    if (landcurve.GetLength() <= 7 && offsetBehavioursOfLandcurves[landcurve].Contains("edge")) 
+            //    {
+            //        haveReallyShort = true;
+            //        reallyShortCurve.Add(landcurve);
+            //    }
+            //}
+            
+            Curve shortestEdge = land.shortestEdgeOfBase;
+            foreach (Curve landcurve in curveWithOffsetedResults.Keys)
+            {
+                //var start = landcurve.PointAtStart;
+                //var end = landcurve.PointAtEnd;
+                //var mid = landcurve.PointAtNormalizedLength(0.5);
+
+                //if(land.shortestEdge.Contains(start,Plane.WorldXY, 0.001) == PointContainment.Coincident
+                //    && land.shortestEdge.Contains(end, Plane.WorldXY, 0.001) == PointContainment.Coincident
+                //    && land.shortestEdge.Contains(mid, Plane.WorldXY, 0.001) == PointContainment.Coincident)
+
+                if(Find.CheckOverlap(landcurve, shortestEdge))
+                {
+                    //haveReallyShort = true;
+                    landShortCurve.Add(landcurve);
+                }
+            }
+
+
             // 此时curveWithOffsetedResults每个只有一条线
             foreach (KeyValuePair<Curve, Curve> pair in curveWithOffsetedResults)
             {
-                // 如果是end线，那么生成的体块深度应该是building spacing，仅用来裁剪
+                if(pair.Key.GetLength() <= 11 && offsetBehavioursOfLandcurves[pair.Key].Contains("edge"))
+                {
+                    continue;
+                }
+
+                double xLength;
+                if (landShortCurve.Contains(pair.Key)) { xLength = pair.Value.GetLength(); }
+                else {xLength = pair.Value.GetLength() + 11; }
+
+/*                if(!reallyShortCurve.Contains( pair.Key ))
+                {*/
+                    // 如果是end线，那么生成的体块深度应该是building spacing，仅用来裁剪
                 if (offsetBehavioursOfLandcurves[pair.Key] == "end")
                 {
-                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength() + 10, land.buildingLandSpacing, floorHight);
+                    //Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength() + 10, land.buildingLandSpacing, floorHight);
+                    //curveWithBrep[pair.Key] = curveBrep;
+                    // 反方向生成
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, xLength + 10, -buildingDepth, floorHight);
                     curveWithBrep[pair.Key] = curveBrep;
                 }
 
@@ -251,21 +301,21 @@ namespace TianParameterModelForOpt
                 {
                     //curveWithBrep[pair.Key] = null;
                     // 尝试向外反方向生成
-                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength() + 10, - land.buildingLandSpacing, floorHight);
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, xLength + 10, -land.buildingLandSpacing, floorHight);
                     curveWithBrep[pair.Key] = curveBrep;
                 }
 
                 else
                 {
-                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, pair.Value.GetLength(), buildingDepth, floorHight);
+                    Brep curveBrep = GenerateTheBuildingBrepDirectly.GenerateSingleFloor(pair.Value, landCurve, xLength, buildingDepth, floorHight);
                     curveWithBrep[pair.Key] = curveBrep;
                 }
-
-        }
+/*                }*/
+            }
 
             List<Brep> sideBreps = new List<Brep>();
-            List<Brep> endBreps = new List<Brep>();
 
+            List<Brep> endBreps = new List<Brep>();
 
             // edge 就加， end就减
             foreach (Curve curve in curveWithBrep.Keys)
@@ -313,32 +363,59 @@ namespace TianParameterModelForOpt
                         brep.CapPlanarHoles(0.01);
                     }
                 }
-                else
-                {
 
-                }
             }
 
-
+            
             if (endBreps.Count() > 0)
             {
-                foreach (Brep brep in endBreps)
-                {
-                    if (brep != null) {
-                        if (brep.IsSolid == false) {
-                            brep.CapPlanarHoles(0.01);
-                        }
-                    }
-                        
-                            
-                    else 
-                    {
+                // ---------------------------------------endBrep方法存档-----------------------------------------
+                //foreach (Brep brep in endBreps)
+                //{
+                //    if (brep != null)
+                //    {
+                //        if (brep.IsSolid == false)
+                //        {
+                //            brep.CapPlanarHoles(0.01);
+                //        }
+                //    }
+                //}
+                ////return solidBreps;
+                //finalBrep = Brep.CreateBooleanDifference(solidBreps, endBreps, 0.01);
 
-                        continue;
-                    }
-                }
+                //if (solidBreps != null
+                //    && endBreps != null
+                //    && !solidBreps.Contains(null)
+                //    && !endBreps.Contains(null))
+                //{
+                //    finalBrep = solidBreps;
 
-                finalBrep = Brep.CreateBooleanDifference(solidBreps, endBreps, 0.01);
+                //    if (finalBrep == null || finalBrep.Contains(null) || finalBrep.Length == 0)
+                //    {
+
+                //        //// 睡眠半秒
+                //        //System.Threading.Thread.Sleep(500);
+
+                //        // 换用Split方法
+                //        Brep[] judged = solidBreps[0].Split(endBreps, 0.01);
+
+                //        if (judged == null || judged.Contains(null) || judged.Length == 0)
+                //            finalBrep = solidBreps;
+                //        else
+                //        {
+                //            var largestOne = Find.FindTheLargestBrep(judged);
+
+                //            if (largestOne.IsSolid == false)
+                //                largestOne = largestOne.CapPlanarHoles(0.01);
+
+                //            finalBrep = new Brep[] { largestOne };
+                //        }
+
+                //    }
+                //}
+                //// ---------------------------------------存档完了-----------------------------------------
+
+                finalBrep = solidBreps;
             }
 
             else
@@ -358,13 +435,92 @@ namespace TianParameterModelForOpt
                 finalBrep = new Brep[] { Find.FindTheLargestBrep(finalBrep) };
 
             else { }
+            //this.judgeBrep = new Judge(curveWithOffsetedResults, land).CreateJudgeBrep();
 
-            this.judgeBrep = new Judge(curveWithOffsetedResults, land).CreateJudgeBrep();
+            //return solidBreps;
 
-            //return finalBrep;
-            Judge judgeBrep = new Judge(curveWithOffsetedResults, land);
-            var repair = judgeBrep.RepairFloorBlock(finalBrep);
-            return repair;
+            // 如果judgebrep不是Solid，那么直接放弃
+            if (this.judgeBrep[0].IsSolid == false || this.judgeBrep.Length > 1 || this.judgeBrep == null || this.judgeBrep.Length == 0)
+                return finalBrep;
+
+            else
+            {
+                Brep[] repairedBrep = Brep.CreateBooleanIntersection(this.judgeBrep, finalBrep, 0.01);
+                if (repairedBrep == null || repairedBrep.Length == 0 || repairedBrep.Contains(null))
+                {
+                    Console.WriteLine("Need repair ! !");
+                    Brep maxvolumebrep = null;
+
+                    if (finalBrep.Length > 1)
+                    {
+                        // 取出最大的那一个
+                        Brep[] unionSecond = Brep.CreateBooleanUnion(finalBrep, 0.001);
+
+                        if (unionSecond.Length > 1)
+                        {
+                            //Brep maxvolumebrep = null;
+                            double maxvolume = 0.0;
+
+                            foreach (Brep brep in finalBrep)
+                            {
+                                VolumeMassProperties vmp = VolumeMassProperties.Compute(brep);
+                                double volume = vmp.Volume;
+
+                                if (volume > maxvolume)
+                                {
+                                    maxvolume = volume;
+                                    maxvolumebrep = brep;
+                                }
+                            }
+                        }
+
+                        else if (unionSecond.Length == 0)
+                            maxvolumebrep = null;
+                        else
+                            maxvolumebrep = unionSecond[0];
+                    }
+                    Brep[] judgedSingleBlockBreps = new Brep[] { maxvolumebrep };
+
+
+                    if (maxvolumebrep == null)
+                    {
+                        Console.WriteLine("Cannot be completed!");
+                        Trace.WriteLine("Cannot be completed!");
+                        repairedBrep = null;
+                    }
+
+
+                    else
+                    {
+                        // 换用Split方法
+                        Brep[] judged = maxvolumebrep.Split(this.judgeBrep, 0.01);
+
+                        var largestOne = Find.FindTheLargestBrep(judged);
+                        if (largestOne.IsSolid == false)
+                            largestOne = largestOne.CapPlanarHoles(0.01);
+
+                        repairedBrep = new Brep[] { largestOne };
+
+                        Console.WriteLine("Repair Complete ! !");
+                        Trace.WriteLine("Repair Complete ! !");
+                    }
+
+                    return repairedBrep;
+                }
+                else
+                {
+                    return repairedBrep;
+                }
+
+                return finalBrep;
+
+
+                //return finalBrep;
+                Judge judgeBrep = new Judge(curveWithOffsetedResults, land);
+                var repair = judgeBrep.RepairFloorBlock(finalBrep);
+                return repair;
+            }
+
         }
 
         // 判断如何生成并移动
@@ -384,20 +540,22 @@ namespace TianParameterModelForOpt
                     Brep groundFloor;
                     Brep otherFloor;
 
-                    if (groundfloors.Count() > 1) { groundFloor = FindTheLargestBrep(groundfloors); }
+                    if (groundfloors == null) { groundFloor = null; }
                         
-                    else if(groundfloors == null) { groundFloor = null; }
-
                     else if (groundfloors.Length==0) { groundFloor = null; }
+
+                    else if (groundfloors.Count() > 1) { groundFloor = FindTheLargestBrep(groundfloors); }
 
                     else { groundFloor = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "ground")[0]; }
 
 
-                    if (otherfloors.Count() > 1) { otherFloor = FindTheLargestBrep(otherfloors); }
-                        
-                    else if(otherfloors == null) { otherFloor = null; }
 
-                    else if (otherfloors.Length==0) { otherFloor = null; }
+
+                    if (otherfloors == null) { otherFloor = null; }
+
+                    else if (otherfloors.Length == 0) { otherFloor = null; }
+
+                    else if (otherfloors.Count() > 1) { otherFloor = FindTheLargestBrep(otherfloors); }
 
                     else { otherFloor = CreateSingleFloorBrep(curveWithOffsetedResults, offsetBehavioursOfLandcurves, "standard")[0]; }
                         
@@ -453,44 +611,63 @@ namespace TianParameterModelForOpt
         }
 
         public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
-    {
-
-        if (time == 0)
         {
+            Stack<Tuple<Brep, int>> stack = new Stack<Tuple<Brep, int>>();
+            stack.Push(new Tuple<Brep, int>(brepNeedDuplicate, time));
+
+            while (stack.Count > 0)
+            {
+                Tuple<Brep, int> current = stack.Pop();
+                Brep currentBrep = current.Item1;
+                int currentTime = current.Item2;
+
+                if (currentTime == 0)
+                {
+                    continue;
+                }
+
+                // 先复制一份
+                Brep brepAbove = currentBrep.DuplicateBrep();
+                //再向上移动形成新的楼层
+
+                Transform translation = Transform.Translation(upToFloorOthers);
+                brepAbove.Transform(translation);
+                // 加入字典里面
+                allBreps.Add(brepAbove);
+
+                stack.Push(new Tuple<Brep, int>(brepAbove, currentTime - 1));
+            }
+
             return allBreps;
         }
-        else
-        {
-            // 先复制一份
-            Brep brepAbove = brepNeedDuplicate.DuplicateBrep();
-            //再向上移动形成新的楼层
-
-            //// 新方法
-            //// Get the starting point of the passed-in Curve sketch
-            //Point3d startingPoint = brepAbove.GetBoundingBox(true).Center;
-
-            //// Create a new vector with length equal to the standard floor height and in the z-axis direction
-            //Vector3d standardFloorVector = new Vector3d(0, 0, standardFloorHeight);
-
-            //// Translate the vector to start at the starting point of the sketch
-            //standardFloorVector.Transform(Transform.Translation(startingPoint - Point3d.Origin));
 
 
-            //Vector3d vectorOfTheSketch = CreateStandardFloorVector(sketchOfBuildingFloor);
+    //    public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
+    //{
 
-            Transform translation = Transform.Translation(upToFloorOthers);
-            brepAbove.Transform(translation);
-            // 加入字典里面
-            allBreps.Add(brepAbove);
-            //emptySketchWithDirection[sketchAbove] = vectorOfTheSketch;
-            //递归
-            return RecursiveDuplicate(brepNeedDuplicate: brepAbove,
-                                            time: time - 1,
-                                            allBreps,
-                                            upToFloorOthers: upToFloorOthers);
-        }
+    //    if (time == 0)
+    //    {
+    //        return allBreps;
+    //    }
+    //    else
+    //    {
+    //        // 先复制一份
+    //        Brep brepAbove = brepNeedDuplicate.DuplicateBrep();
+    //        //再向上移动形成新的楼层
 
-    }
+    //        Transform translation = Transform.Translation(upToFloorOthers);
+    //        brepAbove.Transform(translation);
+    //        // 加入字典里面
+    //        allBreps.Add(brepAbove);
+    //        //emptySketchWithDirection[sketchAbove] = vectorOfTheSketch;
+    //        //递归
+    //        return RecursiveDuplicate(brepNeedDuplicate: brepAbove,
+    //                                        time: time - 1,
+    //                                        allBreps,
+    //                                        upToFloorOthers: upToFloorOthers);
+    //    }
+
+    //}
 
         public Brep FindTheLargestBrep(Brep[] multipleBreps)
         {

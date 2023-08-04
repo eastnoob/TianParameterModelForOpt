@@ -226,7 +226,8 @@ namespace TianParameterModelForOpt
                 // 计算交点坐标，让其成为一点物体
                 intersection = line1.PointAt(para1);
                 // 如果相交，则检查交点是否在给定曲线内
-                if (land.Contains(intersection, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == Rhino.Geometry.PointContainment.Inside)
+                if (land.Contains(intersection, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == Rhino.Geometry.PointContainment.Inside
+                    || land.Contains(intersection, Rhino.Geometry.Plane.WorldXY, absulatTolerance) == Rhino.Geometry.PointContainment.Coincident)
                 {
                     // 输出交点
                     Rhino.RhinoApp.WriteLine("交点坐标为：" + intersection.ToString());
