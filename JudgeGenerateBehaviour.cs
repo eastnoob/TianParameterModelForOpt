@@ -9,6 +9,7 @@ using System.Net;
 using System.Collections;
 using MoreLinq;
 using Rhino.Input.Custom;
+using System.Runtime.CompilerServices;
 //using MoreLinq;
 
 
@@ -41,7 +42,9 @@ namespace TianParameterModelForOpt
                                                         double shortestBLength,
                                                         double shortestLLength,
                                                         double shortestULength,
-                                                        double shortestOLength)
+                                                        double shortestOLength,
+                                                        double xLength,
+                                                        double yLength)
         {
 
             string buildingType = null;
@@ -51,6 +54,47 @@ namespace TianParameterModelForOpt
 
 
             // ------------------------------------------- 先判断形态 ---------------------------------------------------------------
+
+            if(xLength < shortestLandDepth || yLength < shortestLandDepth)
+            {
+                Console.WriteLine("地块不能生成");
+                initialCondition.Add("NO");
+                return initialCondition;
+            }
+            else
+            {
+                if(xLength > yLength)// 扁长方,x长Y短
+                {
+                    if (xLength < shortestBLength)
+                    {
+                        initialCondition.Add("NO");
+                        return initialCondition;
+                    }
+                    else if(shortestBLength <= xLength && xLength < shortestLLength)
+                    {
+                        if (yLength <= shortestBrunchLength)
+                            buildingType = "B";
+                        else if (shortestBrunchLength < yLength && yLength <= shortestBLength)
+                            buildingType = "B";
+                        else if (shortestBLength < yLength && yLength <= shortestLLength)
+                            buildingType = "B";
+                    }
+                    else if ((shortestLLength <= xLength && xLength < shortestULength))
+                    {
+                        if (yLength <= shortestBrunchLength)
+                            buildingType = "B";
+                        else if (shortestBrunchLength < yLength  && yLength <= shortestBLength)
+                            buildingType = "L";
+                        else if (shortestBLength < yLength
+                                && yLength <= shortestLLength)
+                            buildingType = "L";
+                        else if (shortestLLength < directionAndLengths.Min(x => x.Value)
+                                && directionAndLengths.Min(x => x.Value) <= shortestULength)
+                            buildingType = "L";
+                    }
+                }
+            }
+
 
             // 如果最短边没过shortestLandDepth, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
             if (directionAndLengths.Min(x => x.Value) < shortestLandDepth)

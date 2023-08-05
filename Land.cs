@@ -22,6 +22,7 @@ using System.Diagnostics.Eventing.Reader;
 using Rhino.Render.UI;
 using Rhino.Input.Custom;
 using Rhino.UI.Controls;
+using System.Xml.Schema;
 
 namespace TianParameterModelForOpt
 {
@@ -94,6 +95,10 @@ namespace TianParameterModelForOpt
         // 原始地块，生成绿地用
         public Curve originalLandCurve;
 
+        // xyLength
+        double xLength;
+        double yLength;
+
         // 构造器，包含以下属性：base, lands, roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, 都是单个物体，而不是list
         public Land (/*List<Curve> baseCurves, */ Curve setBackCurve, Curve landCurve, /*List<Curve> lands,*/
         double roomDepth, double roomWidth, double corridorWidth, double staircaseWidth, double elevatorWidth, double buildingSpacing,
@@ -140,7 +145,7 @@ namespace TianParameterModelForOpt
 
             
 
-            this.directionAndLength = GetLengthsAndLandlines(this.landCurve, out fourDirectionsEdges);
+            this.directionAndLength = GetLengthsAndLandlines(this.landCurve, out fourDirectionsEdges, out this.xLength, out this.yLength);
 
 
 
@@ -316,7 +321,7 @@ namespace TianParameterModelForOpt
 
 
         // 获得封闭曲线land拆成四个方向的边界,并获得东西南北的长度
-        public Dictionary<string, double> GetLengthsAndLandlines(Curve landCurve, out Dictionary<string, List<Curve>> fourDirectionsEdges)
+        public Dictionary<string, double> GetLengthsAndLandlines(Curve landCurve, out Dictionary<string, List<Curve>> fourDirectionsEdges, out double xLength, out double yLength)
         {
             //fourDirectionsEdges = DispatchEdgesThroughDirection(landCurve);
             fourDirectionsEdges = this.dispatchedEdges;
@@ -327,6 +332,8 @@ namespace TianParameterModelForOpt
 /*            if(isOnShortest == true)
             {*/
                 BoundingBox bbox = landCurve.GetBoundingBox(true);
+                xLength = bbox.Diagonal.X;
+                yLength = bbox.Diagonal.Y;
                 Point3d[] vertices = new Point3d[4];
                 vertices[0] = bbox.Corner(true, true, true); // 左下角
                 vertices[1] = bbox.Corner(false, true, true); // 右下角

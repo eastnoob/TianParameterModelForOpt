@@ -314,6 +314,54 @@ namespace TianParameterModelForOpt
             // 获得四边的condition
             offsetBehavioursOfDirections = JudgeGenerateBehaviour.DetermineLandcurvesOffsetBehaviours(buildingTypeOfThisLandCurve, land.boundageDirections);
 
+            /*            // ** 实验性功能，如果一个方向上有多条边，且有boundage的和没有boundage的，那么追随其最长边的方式偏移
+                        foreach( <string, string> pair in offsetBehavioursOfDirections)
+                        {
+                            if (pair.Value.Contains("boundage"))
+                            {
+                                if (dispatchedEdges[pair.Key].Count == 1) { continue; }
+
+                                else
+                                {
+                                    bool isABoundageWithUnboundageDirection = false;
+
+                                    foreach (Curve curve in dispatchedEdges[pair.Key])
+                                    {
+                                        if (notOnBoundage[pair.Key].Contains(curve))
+                                        {
+                                            isABoundageWithUnboundageDirection = true;
+                                        }
+                                    }
+                                    // 如果是true，那么就证明这个方向是同时存在boundage和unboundage的，应该除错
+                                    if (isABoundageWithUnboundageDirection == true)
+                                    {
+                                        double boundageLen = 0.0;
+                                        double unboundageLen = 0.0;
+
+                                        foreach (Curve curve in dispatchedEdges[pair.Key])
+                                        {
+                                            if (onBoundage[pair.Key].Contains(curve))
+                                            {
+                                                boundageLen += curve.GetLength();
+                                            }
+                                            else if(notOnBoundage[pair.Key].Contains(curve))
+                                            {
+                                                unboundageLen += curve.GetLength();
+                                            }
+                                        }
+
+                                        if (boundageLen < unboundageLen)
+                                        {
+                                            int charsToRemove = "-boundage".Length;
+
+                                            offsetBehavioursOfDirections[pair.Key] = offsetBehavioursOfDirections[pair.Key].Remove(offsetBehavioursOfDirections[pair.Key].Length - charsToRemove);
+                                        }
+                                        else { continue; }
+                                    }
+                                }
+                            }
+                        }*/
+
             //对于方向结果进行纠错
             var boundage = new List<Curve>();
             foreach (KeyValuePair<string, List<Curve>> pair in land.onBoundage)
@@ -322,14 +370,12 @@ namespace TianParameterModelForOpt
             }
 
 
-
             // 遍历每一个方向
             foreach (string direction in offsetBehavioursOfDirections.Keys)
             {
                 // 遍历每一个方向的所有原始边
                 foreach (Curve originalEdge in dispatchedEdges[direction])
                 {
-                    
 
                     // 对于原始边进行处理，得到单个的原始边的偏移后的边
                     //List<Curve> offsetedEdge = EdgeProcessor(originalEdge, landCurve, buildingDepth, buildingSpacing, offsetBehavioursOfLandcurves[direction]);
