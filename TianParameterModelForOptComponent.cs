@@ -222,31 +222,8 @@ namespace TianParameterModelForOpt
             // 将日期和时间转换为指定格式的字符串
             string formattedDate = now.ToString("yyyyMMdd_HHmm");
 
-            Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
+            //Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
 
-            //// 实验，反卡死
-            //async Task<bool> RunWithTimeout(Func<Task> function, TimeSpan timeout)
-            //{
-            //    using (var cts = new CancellationTokenSource())
-            //    {
-            //        var task = function();
-            //        if (await Task.WhenAny(task, Task.Delay(timeout, cts.Token)) == task)
-            //        {
-            //            cts.Cancel();
-            //            await task;  // Very important in order to propagate exceptions
-            //            return true; // The task completed execution within the timeout
-            //        }
-            //        else
-            //        {
-            //            return false; // The task did not complete execution within the timeout
-            //        }
-            //    }
-            //}
-
-
-            // 创建一个取消令牌源
-            //CancellationTokenSource cts = new CancellationTokenSource();
-            //Thread geneticAlgorithmThread = new Thread(() => {
                 // 函数执行
                 int landIndex = 0;
 
@@ -325,6 +302,13 @@ namespace TianParameterModelForOpt
                                                 {*/
                             Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
 
+                            if(thisBuilding.bottomarea == 0) 
+                            {
+                                totalGreenLandArea += AreaMassProperties.Compute( thisLand.landCurve).Area;
+                                landIndex++;
+                                continue;
+                            }
+
                             //// 装载保存
                             allBuildings.Add(thisBuilding.allFloors);
 
@@ -344,6 +328,10 @@ namespace TianParameterModelForOpt
                                 totalConstructArea += 0;
                                 roomNum += 0;
                                 totalGreenLandArea += thisGreenLand.greenLandArea;
+
+                                landIndex++;
+                                continue;
+
                             }
                             else
                             {
@@ -369,102 +357,6 @@ namespace TianParameterModelForOpt
 
                         landIndex++;
                     }
-
-            //});
-
-
-
-            //Thread monitorThread = new Thread(() => {
-            //    Thread.Sleep(10000); // 等待10秒
-
-            //    if (geneticAlgorithmThread.IsAlive)
-            //    {
-            //        geneticAlgorithmThread.Abort(); // 如果主线程仍在运行，终止主线程
-            //    }
-            //});
-
-            //// 启动两个线程
-            //geneticAlgorithmThread.Start();
-            //monitorThread.Start();
-
-
-            //Thread monitorThread = new Thread(() => {
-            //    DateTime startTime = DateTime.Now; // 记录主线程的启动时间
-
-            //    while (true)
-            //    {
-            //        // 检查主线程的运行时间是否超过20秒
-            //        if ((DateTime.Now - startTime).TotalSeconds > 200)
-            //        {
-            //            cancellationTokenSource.Cancel(); // 请求取消操作
-            //            break; // 跳出监控循环
-            //        }
-
-            //        Thread.Sleep(100); // 休眠100毫秒，减少CPU使用
-            //    }
-            //});
-
-            // 启动两个线程
-            /*            geneticAlgorithmThread.Start();*/
-            //monitorThread.Start();
-
-
-
-            // 启动遗传算法线程
-            //geneticAlgorithmThread.Start();
-
-            // 在一个线程中监控遗传算法的执行时间
-            //Thread monitorThread = new Thread(() =>
-            //{
-            //     等待10秒
-            //    Thread.Sleep(TimeSpan.FromSeconds(10));
-
-            //     取消令牌
-            //    cts.Cancel();
-            //});
-
-            // 启动监控线程
-            //monitorThread.Start();
-
-            // 等待遗传算法线程结束
-            //geneticAlgorithmThread.Join();
-
-            // 等待监控线程结束
-            //monitorThread.Join();
-
-
-            //Thread monitorThread = new Thread(() =>
-            //{
-            //    // 监视遗传算法主程序的状态
-            //    while (true)
-            //    {
-            //        if (!geneticAlgorithmThread.IsAlive || geneticAlgorithmThread.ThreadState == System.Threading.ThreadState.Stopped)
-            //        {
-            //            // 主程序已停止响应或结束，结束该次执行
-            //            break;
-            //        }
-
-            //        if (geneticAlgorithmThread.ThreadState == System.Threading.ThreadState.WaitSleepJoin)
-            //        {
-            //            // 主程序被卡住，中断该线程
-            //            geneticAlgorithmThread.Interrupt();
-            //            break;
-            //        }
-
-            //        //if (System.Timers.Timer.ElapsedMilliseconds > 10000)
-            //        //{
-            //        //    // 主程序运行超过10秒，中断该线程
-            //        //    geneticAlgorithmThread.Interrupt();
-            //        //    break;
-            //        //}
-
-            //        Thread.Sleep(1000); // 等待1秒后再次检查主程序状态
-            //    }
-            //});
-
-            //// 启动两个线程
-            //geneticAlgorithmThread.Start();
-            //monitorThread.Start();
 
 
             /*------------------------------------------指标--------------------------------------------------------*/
@@ -496,7 +388,7 @@ namespace TianParameterModelForOpt
 
             DA.SetDataList("JudgeBlocks", judgeBlocks);
 
-            Trace.Close();
+            //Trace.Close();
 
 
 

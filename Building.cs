@@ -754,45 +754,45 @@ namespace TianParameterModelForOpt
 
         /*-------------------------------指标计算-----------------------------------------*/
 
-        // 获取底面
-        public /*BrepFace*/ void GetBottomSurface()
-        {
-            if (allFloors == null || allFloors.Count == 0 || allFloors.Contains(null) == true || allFloors[0] == null)
-            {
-                this.singleFloorArea += 0;
-                //return null;
-            }
+        //// 获取底面
+        //public /*BrepFace*/ void GetBottomSurface()
+        //{
+        //    if (allFloors == null || allFloors.Count == 0 || allFloors.Contains(null) == true || allFloors[0] == null)
+        //    {
+        //        this.singleFloorArea += 0;
+        //        //return null;
+        //    }
 
-            else
-            {
-                Brep brep = this.allFloors[0];
-                BrepFace bottomFace = null;
+        //    else
+        //    {
+        //        Brep brep = this.allFloors[0];
+        //        BrepFace bottomFace = null;
 
-                //bottomFace = Find.FindTheLargestBrepFace(brep.Faces.ToArray());
+        //        //bottomFace = Find.FindTheLargestBrepFace(brep.Faces.ToArray());
 
-                List<BrepFace> bottomFaces = new List<BrepFace>();
+        //        List<BrepFace> bottomFaces = new List<BrepFace>();
 
-                foreach (BrepFace face in brep.Faces)
-                {
-                    Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
-                    if (normal.Z < -0.5) // 底面法线方向朝下
-                    {
-                        bottomFaces.Add(face);
-                        //bottomFace = face;
-                        /*break*/
-                        ;
-                    }
-                }
+        //        foreach (BrepFace face in brep.Faces)
+        //        {
+        //            Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
+        //            if (normal.Z < -0.5) // 底面法线方向朝下
+        //            {
+        //                bottomFaces.Add(face);
+        //                //bottomFace = face;
+        //                /*break*/
+        //                ;
+        //            }
+        //        }
 
-                foreach (var brepFace in bottomFaces)
-                {
-                    this.singleFloorArea += AreaMassProperties.Compute(brepFace).Area;
-                }
+        //        foreach (var brepFace in bottomFaces)
+        //        {
+        //            this.singleFloorArea += AreaMassProperties.Compute(brepFace).Area;
+        //        }
 
-                //return bottomFace;
-            }
+        //        //return bottomFace;
+        //    }
 
-        }
+        //}
 
         public /*BrepFace*/ double GetBottomSurfaceArea()
         {
@@ -805,6 +805,8 @@ namespace TianParameterModelForOpt
             else
             {
                 Brep brep = this.allFloors[0];
+
+
 
                 List<BrepFace> bottomFaces = new List<BrepFace>();
 
