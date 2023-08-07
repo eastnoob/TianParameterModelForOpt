@@ -55,8 +55,14 @@ namespace TianParameterModelForOpt
         public List<Brep> buildingBrep;
 
 
-        // 底面，用于算面积
-        public BrepFace bottomSurface;
+        //// 底面，用于算面积
+        //public BrepFace bottomSurface;
+
+        // 建筑面积
+        public double singleFloorArea;
+
+        // 这个用于检查
+        public double bottomarea;
 
         // ----------------------- debug用变量 -------------------------------
         public List<Curve> singleBlocks;
@@ -185,16 +191,20 @@ namespace TianParameterModelForOpt
             //judgedSingleBlockBreps = Brep.CreateBooleanIntersection(judgeBrep, singleBlockBreps[0], 0.01);
 
             //this.buildingBrep = createallfloors(alledgewithoffsetbasecurve, offsetbehavioursoflandcurves);
-            
-            if(! allFloors.Contains(null))
-            {
-                this.buildingBrep = allFloors;
-                this.bottomSurface = GetBottomSurface();
-            }
-            else
-            {
-                this.bottomSurface = null;
-            }
+
+            this.bottomarea = GetBottomSurfaceArea();
+
+            //if (! allFloors.Contains(null))
+            //{
+            //    this.buildingBrep = allFloors;
+            //    //this.bottomSurface = GetBottomSurface();
+            //    double bottomarea = GetBottomSurfaceArea();
+            //}
+            //else
+            //{
+            //    //double bottomarea = GetBottomSurfaceArea();
+            //    //this.bottomSurface = null;
+            //}
 
            
         }
@@ -222,6 +232,9 @@ namespace TianParameterModelForOpt
 
         public Brep[] CreateSingleFloorBrep(Dictionary<Curve, Curve> curveWithOffsetedResults, Dictionary<Curve, string> offsetBehavioursOfLandcurves, string isStandard)
         {
+
+
+
             this.allEdgeWithOffsetBaseCurve = Draw.DrawSketchOfABuilding(land, out offsetBehavioursOfDirections);
 
             Dictionary<Curve, Brep> curveWithBrep = new Dictionary<Curve, Brep>();
@@ -297,7 +310,7 @@ namespace TianParameterModelForOpt
                 }
 
                 // 如果是end-boundage线，那么直接不生成
-                else if (offsetBehavioursOfLandcurves[pair.Key] == "endfuiy")
+                else if (offsetBehavioursOfLandcurves[pair.Key] == "end-boundage")
                 {
                     //curveWithBrep[pair.Key] = null;
                     // 尝试向外反方向生成
@@ -333,6 +346,15 @@ namespace TianParameterModelForOpt
             sideBreps.RemoveAll(item => item == null);
 
             Brep[] finalBrep;
+
+            //if(sideBreps!= null && !sideBreps.Contains(null) || sideBreps.Count != 0)
+            //{
+            //    foreach (Brep brep in sideBreps)
+            //    {
+            //        this
+            //    }
+            //}
+
 
 
             Brep[] solidBreps = Brep.CreateBooleanUnion(sideBreps, 0.01);
@@ -564,12 +586,18 @@ namespace TianParameterModelForOpt
                     if(groundFloor == null && otherFloor == null)
                     {
                         int index = 0;
-                        while(index < floorNum){
-                        copies.Add(null);
-                        index++;
+
+                    //while(index < floorNum){
+                    //copies.Add(null);
+                    //index++;
+                    //}
+
+                        for (int i = 0; i < floorNum; i++)
+                        {
+                            copies.Add(null);
                         }
 
-                        return copies;
+                    return copies;
                     }
 
                     var upToFloor2 = new Vector3d(0, 0, this.groundFloorHeight);
@@ -586,7 +614,7 @@ namespace TianParameterModelForOpt
                     // 三层及以上
                     int time = this.floorNum - 2;
 
-                    RecursiveDuplicate(otherFloor, time, copies, upToFloorOthers);
+                    RecursiveDuplicate(otherFloor, time, copies, upToFloorOthers, 11);
 
                     return copies;
                 }
@@ -604,42 +632,73 @@ namespace TianParameterModelForOpt
                     copies.Add(baseFloor);
                     var upToFloorOthers = new Vector3d(0, 0, this.standardFloorHeight);
 
-                    RecursiveDuplicate(baseFloor, floorNum - 1, copies, upToFloorOthers);
+                    RecursiveDuplicate(baseFloor, floorNum - 1, copies, upToFloorOthers, 11);
 
                     return copies;
                 }
         }
 
-        public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
+
+
+        // 实验：用递归代替while循环
+
+        public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers, int maxDepth)
         {
-            Stack<Tuple<Brep, int>> stack = new Stack<Tuple<Brep, int>>();
-            stack.Push(new Tuple<Brep, int>(brepNeedDuplicate, time));
-
-            while (stack.Count > 0)
+            if (time > 0 && maxDepth > 0)
             {
-                Tuple<Brep, int> current = stack.Pop();
-                Brep currentBrep = current.Item1;
-                int currentTime = current.Item2;
-
-                if (currentTime == 0)
-                {
-                    continue;
-                }
-
                 // 先复制一份
-                Brep brepAbove = currentBrep.DuplicateBrep();
-                //再向上移动形成新的楼层
+                Brep brepAbove = brepNeedDuplicate.DuplicateBrep();
 
+                // 再向上移动形成新的楼层
                 Transform translation = Transform.Translation(upToFloorOthers);
                 brepAbove.Transform(translation);
-                // 加入字典里面
+
+                // 加入列表里面
                 allBreps.Add(brepAbove);
 
-                stack.Push(new Tuple<Brep, int>(brepAbove, currentTime - 1));
+                // 递归调用，同时减少剩余的复制次数和最大深度
+                RecursiveDuplicate(brepAbove, time - 1, allBreps, upToFloorOthers, maxDepth - 1);
+            }
+
+            else
+            {
+                return allBreps;
             }
 
             return allBreps;
         }
+
+
+        //public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
+        //{
+        //    Stack<Tuple<Brep, int>> stack = new Stack<Tuple<Brep, int>>();
+        //    stack.Push(new Tuple<Brep, int>(brepNeedDuplicate, time));
+
+        //    while (stack.Count > 0)
+        //    {
+        //        Tuple<Brep, int> current = stack.Pop();
+        //        Brep currentBrep = current.Item1;
+        //        int currentTime = current.Item2;
+
+        //        if (currentTime == 0)
+        //        {
+        //            continue;
+        //        }
+
+        //        // 先复制一份
+        //        Brep brepAbove = currentBrep.DuplicateBrep();
+        //        //再向上移动形成新的楼层
+
+        //        Transform translation = Transform.Translation(upToFloorOthers);
+        //        brepAbove.Transform(translation);
+        //        // 加入字典里面
+        //        allBreps.Add(brepAbove);
+
+        //        stack.Push(new Tuple<Brep, int>(brepAbove, currentTime - 1));
+        //    }
+
+        //    return allBreps;
+        //}
 
 
     //    public List<Brep> RecursiveDuplicate(Brep brepNeedDuplicate, int time, List<Brep> allBreps, Vector3d upToFloorOthers)
@@ -696,22 +755,78 @@ namespace TianParameterModelForOpt
         /*-------------------------------指标计算-----------------------------------------*/
 
         // 获取底面
-        public BrepFace GetBottomSurface()
-    {
-        Brep brep = this.allFloors[0];
-        BrepFace bottomFace = null;
-        foreach (BrepFace face in brep.Faces)
+        public /*BrepFace*/ void GetBottomSurface()
         {
-            Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
-            if (normal.Z < -0.5) // 底面法线方向朝下
+            if (allFloors == null || allFloors.Count == 0 || allFloors.Contains(null) == true || allFloors[0] == null)
             {
-                bottomFace = face;
-                break;
+                this.singleFloorArea += 0;
+                //return null;
             }
-        }
-        return bottomFace;
-    }
 
+            else
+            {
+                Brep brep = this.allFloors[0];
+                BrepFace bottomFace = null;
+
+                //bottomFace = Find.FindTheLargestBrepFace(brep.Faces.ToArray());
+
+                List<BrepFace> bottomFaces = new List<BrepFace>();
+
+                foreach (BrepFace face in brep.Faces)
+                {
+                    Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
+                    if (normal.Z < -0.5) // 底面法线方向朝下
+                    {
+                        bottomFaces.Add(face);
+                        //bottomFace = face;
+                        /*break*/
+                        ;
+                    }
+                }
+
+                foreach (var brepFace in bottomFaces)
+                {
+                    this.singleFloorArea += AreaMassProperties.Compute(brepFace).Area;
+                }
+
+                //return bottomFace;
+            }
+
+        }
+
+        public /*BrepFace*/ double GetBottomSurfaceArea()
+        {
+            if (allFloors == null || allFloors.Count == 0 || allFloors.Contains(null) == true || allFloors[0] == null)
+            {
+                this.singleFloorArea += 0;
+                return 0;
+            }
+
+            else
+            {
+                Brep brep = this.allFloors[0];
+
+                List<BrepFace> bottomFaces = new List<BrepFace>();
+
+                foreach (BrepFace face in brep.Faces)
+                {
+                    Vector3d normal = face.NormalAt(face.Domain(0).Mid, face.Domain(1).Mid);
+
+                    if (normal.Z < -0.5) // 底面法线方向朝下
+                    {
+                        bottomFaces.Add(face);
+                    }
+                }
+
+                foreach (var brepFace in bottomFaces)
+                {
+                    this.singleFloorArea += AreaMassProperties.Compute(brepFace).Area;
+                }
+                return this.singleFloorArea;
+                //return bottomFace;
+            }
+
+        }
 
 
         public double GetBuildingArea(List<Curve> floors)
@@ -745,8 +860,15 @@ namespace TianParameterModelForOpt
             //List <Curve> floors = new List<Curve> { floorSketch };
             // 单层楼的面积
             double areaOfSingleFloor = 0;
-            if (this.bottomSurface != null)
-                areaOfSingleFloor = AreaMassProperties.Compute(bottomSurface).Area;
+
+            if(this.bottomarea != 0)
+            {
+                areaOfSingleFloor = this.singleFloorArea;
+            }
+
+            
+            //if (this.bottomSurface != null)
+            //    areaOfSingleFloor = AreaMassProperties.Compute(bottomSurface).Area;
 
 
             double buildingDepth = land.GetBuildingDepth();

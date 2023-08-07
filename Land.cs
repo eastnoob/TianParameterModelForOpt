@@ -147,7 +147,7 @@ namespace TianParameterModelForOpt
 
             this.directionAndLength = GetLengthsAndLandlines(this.landCurve, out fourDirectionsEdges, out this.xLength, out this.yLength);
 
-
+            
 
             this.buildingTypeOfThisLandCurve = JudgeGenerateBehaviour.DetermineBuildingTypeOfTheLand(boundageDirections, directionAndLength, landCurve, isWestOrEast, isNorthOrSouth,
                 GetShortestEndDepth(),
@@ -155,7 +155,9 @@ namespace TianParameterModelForOpt
                 GetShortestBLength(),
                 GetShortestLLength(),
                 GetShortestULength(),
-                GetShortestOLength()); ;
+                GetShortestOLength(),
+                xLength,
+                yLength); ;
 
 
             
@@ -597,6 +599,17 @@ namespace TianParameterModelForOpt
                 LineCurve endCurve = new LineCurve(start, end);
 
                 Curve[] curves = new Curve[] { upCurve, downCurve, startCurve, endCurve };
+
+                var zoneCanditate = Curve.JoinCurves(curves);
+                if (zoneCanditate.Length >= 1)
+                {
+                    return zoneCanditate[0];
+                }
+                else
+                {
+
+                    return zoneCanditate[0];
+                }
 
                 return Curve.JoinCurves(curves)[0];
             }
@@ -2518,7 +2531,7 @@ namespace TianParameterModelForOpt
             var b = GetShortestEndDepth() * GetShortestBLength();
 
             if (isOnShortest == false 
-                || landCurve.SpanCount < 4 
+                || landCurve.SpanCount <= 4 
                 || AreaMassProperties.Compute(landCurve).Area <= GetShortestEndDepth() * GetShortestBLength() )
             {
                 return landCurve;

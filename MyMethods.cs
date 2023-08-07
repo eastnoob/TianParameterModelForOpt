@@ -18,43 +18,43 @@ namespace TianParameterModelForOpt
         // 构造器
         private static readonly double absulatTolerance = RhinoDoc.ActiveDoc.ModelAbsoluteTolerance;
 
-        public static List<Point3d> GrahamScan(List<Point3d> points)
-        {
-            /// <summary>
-            /// 点的排序算法
+        //public static List<Point3d> GrahamScan(List<Point3d> points)
+        //{
+        //    /// <summary>
+        //    /// 点的排序算法
 
-            // 如果点的数量小于 3，直接返回
-            if (points.Count < 3)
-                return points;
+        //    // 如果点的数量小于 3，直接返回
+        //    if (points.Count < 3)
+        //        return points;
 
-            // 找到最下面的点，并将其放在列表的第一个位置
-            int minIndex = 0;
-            for (int i = 1; i < points.Count; i++)
-            {
-                if (points[i].Y < points[minIndex].Y || (points[i].Y == points[minIndex].Y && points[i].X < points[minIndex].X))
-                    minIndex = i;
-            }
-            Point3d temp = points[0];
-            points[0] = points[minIndex];
-            points[minIndex] = temp;
+        //    // 找到最下面的点，并将其放在列表的第一个位置
+        //    int minIndex = 0;
+        //    for (int i = 1; i < points.Count; i++)
+        //    {
+        //        if (points[i].Y < points[minIndex].Y || (points[i].Y == points[minIndex].Y && points[i].X < points[minIndex].X))
+        //            minIndex = i;
+        //    }
+        //    Point3d temp = points[0];
+        //    points[0] = points[minIndex];
+        //    points[minIndex] = temp;
 
-            // 根据极角排序点
-            Point3d pivot = points[0];
-            points.Sort((a, b) => GetAngle(pivot, a).CompareTo(GetAngle(pivot, b)));
+        //    // 根据极角排序点
+        //    Point3d pivot = points[0];
+        //    points.Sort((a, b) => GetAngle(pivot, a).CompareTo(GetAngle(pivot, b)));
 
-            // 执行 Graham 扫描算法
-            List<Point3d> hull = new List<Point3d>();
-            hull.Add(points[0]);
-            hull.Add(points[1]);
-            for (int i = 2; i < points.Count; i++)
-            {
-                while (hull.Count >= 2 && Orientation(hull[hull.Count - 2], hull[hull.Count - 1], points[i]) <= 0)
-                    hull.RemoveAt(hull.Count - 1);
-                hull.Add(points[i]);
-            }
+        //    // 执行 Graham 扫描算法
+        //    List<Point3d> hull = new List<Point3d>();
+        //    hull.Add(points[0]);
+        //    hull.Add(points[1]);
+        //    for (int i = 2; i < points.Count; i++)
+        //    {
+        //        while (hull.Count >= 2 && Orientation(hull[hull.Count - 2], hull[hull.Count - 1], points[i]) <= 0)
+        //            hull.RemoveAt(hull.Count - 1);
+        //        hull.Add(points[i]);
+        //    }
 
-            return hull;
-        }
+        //    return hull;
+        //}
 
         private static double GetAngle(Point3d a, Point3d b)
         {

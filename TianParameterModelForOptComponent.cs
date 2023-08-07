@@ -9,12 +9,20 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
 using TianParameterModelForOpt._5_output;
+using TianParameterModelForOpt._6_antiBreak;
+using System.Timers;
+using System.Diagnostics;
 
 namespace TianParameterModelForOpt
 {
     public class TianParameterModelForOptComponent : GH_Component
     {
+
+
+
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
         /// constructor without any arguments.
@@ -126,8 +134,11 @@ namespace TianParameterModelForOpt
         /// </summary>
         /// <param name="DA">The DA object can be used to retrieve data from input parameters and 
         /// to store data in output parameters.</param>
-        protected override void SolveInstance(IGH_DataAccess DA)
+        protected override async void SolveInstance(IGH_DataAccess DA)
         {
+
+
+
             // 用于存储输入的数据
             Curve baseCurve = Curve.CreateControlPointCurve(new Point3d[0], 1);
             List<Curve> lands = new List<Curve>();
@@ -175,7 +186,10 @@ namespace TianParameterModelForOpt
 
             // == 参数
             // 基底面积
-            double baseCurveArea = AreaMassProperties.Compute(baseCurve).Area;
+            //double baseCurveArea = AreaMassProperties.Compute(baseCurve).Area;
+
+            double baseCurveArea = AreaMassProperties.Compute(baseCurve.Offset(Plane.WorldXY, 5, 0.01, CurveOffsetCornerStyle.Sharp)).Area;
+
             // 规划建设用地面积
             double offsetedBaseCurveArea = 0;
 
@@ -210,225 +224,247 @@ namespace TianParameterModelForOpt
 
             Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
 
-            // 函数执行
-            int landIndex = 0;
-
-            while (landIndex < lands.Count)
-            {
-
-
-                Rhino.RhinoApp.WriteLine("-------------------------------- New building ------------------------------------");
-
-
-                // 初始化Land
-                Land thisLand = new Land(baseCurve, lands[landIndex], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
-
-                if (lands[landIndex].SpanCount < 4 || AreaMassProperties.Compute(lands[landIndex]).Area <= thisLand.GetShortestEndDepth() * thisLand.GetShortestBLength())
-                {
-                    Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
-                    allBuildings.Add(null);
-
-                    // 绿地
-                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
-                    allGreenLand.Add(greenLand.greenLandBrep);
-
-                    // 绿地面积(单个)
-                    totalGreenLandArea += greenLand.greenLandArea;
-                    landIndex++;
-
-                    continue;
-                }
-
-                //------------------------------------------------以下用于测试-----------------------------------------------
-
-                //// 生成这个land的sketch 
-                //Curve thisSketch = Draw.DrawSketchOfABuilding(thisLand);
-
-                //// 加入sketch
-                //sketchs.Add(thisSketch);
-
-                //------------------------------------------------以上用于测试-----------------------------------------------
-
-                // 先传出base的面积
-                if (offsetedBaseCurveArea == 0)
-                    offsetedBaseCurveArea = AreaMassProperties.Compute(thisLand.baseCurve).Area;
+            //// 实验，反卡死
+            //async Task<bool> RunWithTimeout(Func<Task> function, TimeSpan timeout)
+            //{
+            //    using (var cts = new CancellationTokenSource())
+            //    {
+            //        var task = function();
+            //        if (await Task.WhenAny(task, Task.Delay(timeout, cts.Token)) == task)
+            //        {
+            //            cts.Cancel();
+            //            await task;  // Very important in order to propagate exceptions
+            //            return true; // The task completed execution within the timeout
+            //        }
+            //        else
+            //        {
+            //            return false; // The task did not complete execution within the timeout
+            //        }
+            //    }
+            //}
 
 
-                // 条件判断，如果land不生成建筑，则跳过，将一个null放入建筑列表占位
-                if (thisLand.buildingTypeOfThisLandCurve.Contains("NO"))
-                {
-                    Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
-                    allBuildings.Add(null);
+            // 创建一个取消令牌源
+            //CancellationTokenSource cts = new CancellationTokenSource();
+            //Thread geneticAlgorithmThread = new Thread(() => {
+                // 函数执行
+                int landIndex = 0;
 
-                    // 绿地
-                    GreenLand greenLand = new GreenLand(thisLand, roomWidth);
-                    allGreenLand.Add(greenLand.greenLandBrep);
+                    while (landIndex < lands.Count/* && !cancellationToken.IsCancellationRequested*/)
+                    {
+                        Rhino.RhinoApp.WriteLine("-------------------------------- New building ------------------------------------");
 
-                    // 绿地面积(单个)
-                    totalGreenLandArea += greenLand.greenLandArea;
+                        // 初始化Land
+                        Land thisLand = new Land(baseCurve, lands[landIndex], roomDepth, roomWidth, corridorWidth, staircaseWidth, elevatorWidth, buildingSpacing, zoneWestEast, zoneNorthSouth);
 
-                    // 参数
-                    totalBuildingArea += 0;
-                    totalConstructArea += 0;
-                    roomNum += 0;
-                }
-                else
-                {
-
-                    Console.WriteLine("The Land" + landIndex.ToString() + "is valied!");
-                    Console.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
-
-                    Console.WriteLine("Land index: " + landIndex);
-                    Console.WriteLine("Floor number: " + floorNum[landIndex]);
-
-                    Trace.WriteLine("The Land" + landIndex.ToString() + "is valied!");
-                    Trace.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
-                    Trace.WriteLine("Land index: " + landIndex);
-                    Trace.WriteLine("Floor number: " + floorNum[landIndex]);
-
-                    // 初始化building
-/*                    try
-                    {*/
-                        Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
-
-                        //// 装载保存
-                        allBuildings.Add(thisBuilding.allFloors);
-
-                        // 保存JudgeList
-                        judgeBlocks.Add(thisBuilding.judgeBrep[0]);
-
-                        // 绿地
-                        GreenLand thisGreenLand = new GreenLand(thisLand, roomWidth);
-                        allGreenLand.Add(thisGreenLand.greenLandBrep);
-
-                        // 面积计算
-                        // 不生成的情况下
-                        if (thisBuilding.allFloors == null || thisBuilding.bottomSurface == null)
+                        if (lands[landIndex].SpanCount < 4 || AreaMassProperties.Compute(lands[landIndex]).Area <= thisLand.GetShortestEndDepth() * thisLand.GetShortestBLength())
                         {
-                            Console.WriteLine("该地块不能生成");
+                            Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
+                            allBuildings.Add(null);
+
+                            // 绿地
+                            GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                            allGreenLand.Add(greenLand.greenLandBrep);
+
+                            // 绿地面积(单个)
+                            totalGreenLandArea += greenLand.greenLandArea;
+                            landIndex++;
+
+                            continue;
+                        }
+
+                        //------------------------------------------------以下用于测试-----------------------------------------------
+
+                        //// 生成这个land的sketch 
+                        //Curve thisSketch = Draw.DrawSketchOfABuilding(thisLand);
+
+                        //// 加入sketch
+                        //sketchs.Add(thisSketch);
+
+                        //------------------------------------------------以上用于测试-----------------------------------------------
+
+                        // 先传出base的面积
+                        if (offsetedBaseCurveArea == 0)
+                            offsetedBaseCurveArea = AreaMassProperties.Compute(thisLand.baseCurve).Area;
+
+
+                        // 条件判断，如果land不生成建筑，则跳过，将一个null放入建筑列表占位
+                        if (thisLand.buildingTypeOfThisLandCurve.Contains("NO"))
+                        {
+                            Console.WriteLine("The Land" + landIndex.ToString() + "do not generate, pass!");
+                            allBuildings.Add(null);
+
+                            // 绿地
+                            GreenLand greenLand = new GreenLand(thisLand, roomWidth);
+                            allGreenLand.Add(greenLand.greenLandBrep);
+
+                            // 绿地面积(单个)
+                            totalGreenLandArea += greenLand.greenLandArea;
+
+                            // 参数
                             totalBuildingArea += 0;
                             totalConstructArea += 0;
                             roomNum += 0;
-                            totalGreenLandArea += thisGreenLand.greenLandArea;
                         }
                         else
                         {
-                            // 建筑基底面积（单个）
-                            totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
-                            //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
 
-                            // 建造面积（单个
-                            totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
-                            //double constructArea = buildingArea * floorNum[index];
+                            Console.WriteLine("The Land" + landIndex.ToString() + "is valied!");
+                            Console.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
 
-                            // 绿地面积(单个)
-                            totalGreenLandArea += thisGreenLand.greenLandArea;
-                            //double greenLandArea = greenLand.greenLandArea;
+                            Console.WriteLine("Land index: " + landIndex);
+                            Console.WriteLine("Floor number: " + floorNum[landIndex]);
 
-                            // 房间数量（单个）
-                            roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                            Trace.WriteLine("The Land" + landIndex.ToString() + "is valied!");
+                            Trace.WriteLine("Building Type:" + thisLand.buildingTypeOfThisLandCurve.ToString());
+                            Trace.WriteLine("Land index: " + landIndex);
+                            Trace.WriteLine("Floor number: " + floorNum[landIndex]);
+
+                            // 初始化building
+                            /*                    try
+                                                {*/
+                            Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
+
+                            //// 装载保存
+                            allBuildings.Add(thisBuilding.allFloors);
+
+                            // 保存JudgeList
+                            judgeBlocks.Add(thisBuilding.judgeBrep[0]);
+
+                            // 绿地
+                            GreenLand thisGreenLand = new GreenLand(thisLand, roomWidth);
+                            allGreenLand.Add(thisGreenLand.greenLandBrep);
+
+                            // 面积计算
+                            // 不生成的情况下
+                            if (thisBuilding.allFloors == null/* || thisBuilding.bottomSurface == null*/)
+                            {
+                                Console.WriteLine("该地块不能生成");
+                                totalBuildingArea += 0;
+                                totalConstructArea += 0;
+                                roomNum += 0;
+                                totalGreenLandArea += thisGreenLand.greenLandArea;
+                            }
+                            else
+                            {
+                                // 建筑基底面积（单个）
+                                totalBuildingArea += thisBuilding.singleFloorArea;
+                                //totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
+                                //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
+
+                                // 建造面积（单个
+                                totalConstructArea += totalBuildingArea * floorNum[landIndex];
+                                //totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
+                                //double constructArea = buildingArea * floorNum[index];
+
+                                // 绿地面积(单个)
+                                totalGreenLandArea += thisGreenLand.greenLandArea - totalBuildingArea;
+                                //double greenLandArea = greenLand.greenLandArea;
+
+                                // 房间数量（单个）
+                                roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
+                            }
+
                         }
 
-/*                    }
-                    catch (Exception)
-                    {
-                        //// 装载保存
-                        allBuildings.Add(new List<Brep>());
+                        landIndex++;
+                    }
 
-                        // 保存JudgeList
-                        judgeBlocks.Add(null);
-
-                        // 绿地
-                        GreenLand greenLandException = new GreenLand(thisLand, roomWidth);
-                        allGreenLand.Add(greenLandException.greenLandBrep);
-
-                        // 面积计算
-                        // 不生成的情况下
-
-                        Console.WriteLine("该地块不能生成");
-                        totalBuildingArea += 0;
-                        totalConstructArea += 0;
-                        roomNum += 0;
-                        totalGreenLandArea += greenLandException.greenLandArea;
-
-                        //landIndex++;
-
-                        continue;
-                    }*/
-
-                    ////-----------------------------------原有的程序-----------------------------------
-
-                    //Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
-
-                    ////allBuildings.Add(thisBuilding.allFloors);
-
-                    ////// ------------------------临时变量------------------------
-                    ////Brep aaa = thisBuilding.judgeBrep;
-                    ////Brep[] bbb =
-                    ////allFloors.Add(aaa);
-
-                    ////Brep[] allBreps = thisBuilding.allFloors;
-                    ////List<Brep> allBreps = thisBuilding.allFloors;
-                    ////allFloors.AddRange(allBreps);
-
-                    ////singleBlocks.AddRange(thisBuilding.brepOfTheBuilding);
-
-                    ////singleBlocks.AddRange(thisBuilding.singleBlocks);
-
-                    //// --------------------------------------原有程序完-------------------------------------
-
-                    ////Building thisBuilding = new Building(thisLand, groundFloorHeight, standardFloorHeight, floorNum[landIndex]);
-
-                    ////// 装载保存
-                    //allBuildings.Add(thisBuilding.allFloors);
-
-                    //// 保存JudgeList
-                    //judgeBlocks.Add(thisBuilding.judgeBrep[0]);
-
-                    //// 绿地
-                    //GreenLand greenLand = new GreenLand(thisLand, roomWidth);
-                    //allGreenLand.Add(greenLand.greenLandBrep);
-
-                    //// 面积计算
-                    //// 不生成的情况下
-                    //if(thisBuilding.allFloors == null || thisBuilding.bottomSurface == null)
-                    //{
-                    //    Console.WriteLine("该地块不能生成");
-                    //    totalBuildingArea += 0;
-                    //    totalConstructArea += 0;
-                    //    roomNum += 0;
-                    //    totalGreenLandArea += greenLand.greenLandArea;
-                    //}
-                    //else
-                    //{
-                    //    // 建筑基底面积（单个）
-                    //    totalBuildingArea += AreaMassProperties.Compute(thisBuilding.bottomSurface).Area;
-                    //    //double buildingArea = AreaMassProperties.Compute(thisBuilding.floorSketch).Area;
-
-                    //    // 建造面积（单个
-                    //    totalConstructArea += (AreaMassProperties.Compute(thisBuilding.bottomSurface).Area) * floorNum[landIndex];
-                    //    //double constructArea = buildingArea * floorNum[index];
-
-                    //    // 绿地面积(单个)
-                    //    totalGreenLandArea += greenLand.greenLandArea;
-                    //    //double greenLandArea = greenLand.greenLandArea;
-
-                    //    // 房间数量（单个）
-                    //    roomNum += Convert.ToInt32(Math.Round(thisBuilding.GetEstimatedRoomAccount()));
-                    //}
+            //});
 
 
 
-                    //// ---------------------临时变量---------------------
-                    //allFloorsPlanes.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Keys.ToList());
-                    //allFloorsPaths.AddRange(thisBuilding.allfloorPlanesAndItsVectors.Values.ToList());
+            //Thread monitorThread = new Thread(() => {
+            //    Thread.Sleep(10000); // 等待10秒
 
-                }
+            //    if (geneticAlgorithmThread.IsAlive)
+            //    {
+            //        geneticAlgorithmThread.Abort(); // 如果主线程仍在运行，终止主线程
+            //    }
+            //});
+
+            //// 启动两个线程
+            //geneticAlgorithmThread.Start();
+            //monitorThread.Start();
 
 
-                landIndex ++;
-                    
-            }
+            //Thread monitorThread = new Thread(() => {
+            //    DateTime startTime = DateTime.Now; // 记录主线程的启动时间
+
+            //    while (true)
+            //    {
+            //        // 检查主线程的运行时间是否超过20秒
+            //        if ((DateTime.Now - startTime).TotalSeconds > 200)
+            //        {
+            //            cancellationTokenSource.Cancel(); // 请求取消操作
+            //            break; // 跳出监控循环
+            //        }
+
+            //        Thread.Sleep(100); // 休眠100毫秒，减少CPU使用
+            //    }
+            //});
+
+            // 启动两个线程
+            /*            geneticAlgorithmThread.Start();*/
+            //monitorThread.Start();
+
+
+
+            // 启动遗传算法线程
+            //geneticAlgorithmThread.Start();
+
+            // 在一个线程中监控遗传算法的执行时间
+            //Thread monitorThread = new Thread(() =>
+            //{
+            //     等待10秒
+            //    Thread.Sleep(TimeSpan.FromSeconds(10));
+
+            //     取消令牌
+            //    cts.Cancel();
+            //});
+
+            // 启动监控线程
+            //monitorThread.Start();
+
+            // 等待遗传算法线程结束
+            //geneticAlgorithmThread.Join();
+
+            // 等待监控线程结束
+            //monitorThread.Join();
+
+
+            //Thread monitorThread = new Thread(() =>
+            //{
+            //    // 监视遗传算法主程序的状态
+            //    while (true)
+            //    {
+            //        if (!geneticAlgorithmThread.IsAlive || geneticAlgorithmThread.ThreadState == System.Threading.ThreadState.Stopped)
+            //        {
+            //            // 主程序已停止响应或结束，结束该次执行
+            //            break;
+            //        }
+
+            //        if (geneticAlgorithmThread.ThreadState == System.Threading.ThreadState.WaitSleepJoin)
+            //        {
+            //            // 主程序被卡住，中断该线程
+            //            geneticAlgorithmThread.Interrupt();
+            //            break;
+            //        }
+
+            //        //if (System.Timers.Timer.ElapsedMilliseconds > 10000)
+            //        //{
+            //        //    // 主程序运行超过10秒，中断该线程
+            //        //    geneticAlgorithmThread.Interrupt();
+            //        //    break;
+            //        //}
+
+            //        Thread.Sleep(1000); // 等待1秒后再次检查主程序状态
+            //    }
+            //});
+
+            //// 启动两个线程
+            //geneticAlgorithmThread.Start();
+            //monitorThread.Start();
 
 
             /*------------------------------------------指标--------------------------------------------------------*/
@@ -440,27 +476,6 @@ namespace TianParameterModelForOpt
             // 转化为datatree
             var dataTree = new DataTree<Brep>();
             dataTree = Output.ConvertListToDataTree(allBuildings);
-
-            //if(allBuildings.Contains (null))
-            //{
-            //    dataTree.Add(null);
-            //}
-            //else
-            //{
-            //    dataTree = Output.ConvertListToDataTree(allBuildings);
-            //    //for (int i = 0; i < allBuildings.Count; i++)
-            //    //{
-            //    //    for (int j = 0; j < allBuildings[i].Count; j++)
-            //    //    {
-            //    //        dataTree.Add(allBuildings[i][j], new GH_Path(i));
-            //    //    }
-            //    //}
-
-            //}
-
-
-            //DA.SetDataTree(0, dataTree);
-
 
             /*-------------------------------------------输出-------------------------------------------------------*/
 
@@ -482,6 +497,8 @@ namespace TianParameterModelForOpt
             DA.SetDataList("JudgeBlocks", judgeBlocks);
 
             Trace.Close();
+
+
 
         }
 

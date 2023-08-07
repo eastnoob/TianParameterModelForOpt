@@ -37,6 +37,29 @@ namespace TianParameterModelForOpt._4_repair
             return maxVolumeBrep;
         }
 
+        public static BrepFace FindTheLargestBrepFace(BrepFace[] multipleBreps)
+        {
+            // 判断最大的
+            BrepFace maxVolumeBrep = null;
+            double maxVolume = 0.0;
+
+            foreach (BrepFace brep in multipleBreps)
+            {
+                //VolumeMassProperties vmp = VolumeMassProperties.Compute(brep);
+                //double volume = vmp.Volume;
+                double volume = brep.ToBrep().GetArea();
+
+                if (volume > maxVolume)
+                {
+                    maxVolume = volume;
+                    maxVolumeBrep = brep;
+                }
+            }
+            //if (maxVolumeBrep != null)
+            //    maxVolumeBrep = multipleBreps[0];
+            return maxVolumeBrep;
+        }
+
 
         public static Curve FindTheLargestCurve(Curve[] multipleCurves)
         {

@@ -53,47 +53,7 @@ namespace TianParameterModelForOpt
             List<string> initialCondition = new List<string>();
 
 
-            // ------------------------------------------- 先判断形态 ---------------------------------------------------------------
-
-            if(xLength < shortestLandDepth || yLength < shortestLandDepth)
-            {
-                Console.WriteLine("地块不能生成");
-                initialCondition.Add("NO");
-                return initialCondition;
-            }
-            else
-            {
-                if(xLength > yLength)// 扁长方,x长Y短
-                {
-                    if (xLength < shortestBLength)
-                    {
-                        initialCondition.Add("NO");
-                        return initialCondition;
-                    }
-                    else if(shortestBLength <= xLength && xLength < shortestLLength)
-                    {
-                        if (yLength <= shortestBrunchLength)
-                            buildingType = "B";
-                        else if (shortestBrunchLength < yLength && yLength <= shortestBLength)
-                            buildingType = "B";
-                        else if (shortestBLength < yLength && yLength <= shortestLLength)
-                            buildingType = "B";
-                    }
-                    else if ((shortestLLength <= xLength && xLength < shortestULength))
-                    {
-                        if (yLength <= shortestBrunchLength)
-                            buildingType = "B";
-                        else if (shortestBrunchLength < yLength  && yLength <= shortestBLength)
-                            buildingType = "L";
-                        else if (shortestBLength < yLength
-                                && yLength <= shortestLLength)
-                            buildingType = "L";
-                        else if (shortestLLength < directionAndLengths.Min(x => x.Value)
-                                && directionAndLengths.Min(x => x.Value) <= shortestULength)
-                            buildingType = "L";
-                    }
-                }
-            }
+            // ------------------------------------------- 先判断形态 --------------------------------------------------------------
 
 
             // 如果最短边没过shortestLandDepth, 抛出信息：地块不能生成，并将”NO“添加到initialCondition中
@@ -186,7 +146,7 @@ namespace TianParameterModelForOpt
             }
 
 
-        
+
 
             // --------------------------------------------- 再判断方向---------------------------------------------------
 
@@ -199,8 +159,53 @@ namespace TianParameterModelForOpt
                 {"south", 0 },
                 {"east", 0 },
                 {"west", 0 }
-            }; 
+            };
 
+
+            // 先使用形状给一个基本分
+            if (xLength > yLength)
+            {
+                if (directionAndLengths["north"] > directionAndLengths["south"] ||/* boundageDirections.Contains("north") || */ns == "north")
+                {
+                    directionWithScore["north"] += 2;
+                }
+                else if (directionAndLengths["north"] < directionAndLengths["south"] ||/* boundageDirections.Contains("south") || */ns == "south")
+                {
+                    directionWithScore["south"] += 2;
+                }
+            }
+            else if (xLength < yLength)
+            {
+                  if (directionAndLengths["east"] > directionAndLengths["west"] ||/* boundageDirections.Contains("east") || */ew == "east")
+                {
+                    directionWithScore["east"] += 2;
+                }
+                else if (directionAndLengths["east"] < directionAndLengths["west"] ||/* boundageDirections.Contains("west") || */ew == "west")
+                {
+                    directionWithScore["west"] += 2;
+                }
+            }
+            else
+            {
+                if (/*directionAndLengths["north"] > directionAndLengths["south"] || */boundageDirections.Contains("north") || ns == "north")
+                {
+                    directionWithScore["north"] += 1;
+                }
+                else if (/*directionAndLengths["north"] > directionAndLengths["south"] || */boundageDirections.Contains("south") || ns == "south")
+                {
+                    directionWithScore["south"] += 1;
+                }
+                else if (/*directionAndLengths["east"] > directionAndLengths["west"] || */boundageDirections.Contains("east") || ew == "east")
+                {
+                    directionWithScore["east"] += 1;
+                }
+                else if (/*directionAndLengths["east"] > directionAndLengths["west"] || */boundageDirections.Contains("west") || ew == "west")
+                {
+                    directionWithScore["west"] += 1;
+                }
+            }
+
+            // 优先级A，判断boundageDirections是否为空，如果不为空，将其所有元素加入initialCondition
             if (boundageDirections.Count != 0)
             {
                 foreach (var direction in boundageDirections)
@@ -351,7 +356,7 @@ namespace TianParameterModelForOpt
                     directionWithScore[maxStrList[0]] += 2;
                 }
 
-                }
+            }
 
             // ---------------------------------------- 检查与纠错 -----------------------------------------------------
 

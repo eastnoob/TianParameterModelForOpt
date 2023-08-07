@@ -68,7 +68,7 @@ namespace TianParameterModelForOpt
             {
                 Curve[] greenLand = landCurve.Offset(AreaMassProperties.Compute(landCurve).Centroid,
                                     Plane.WorldXY.Normal,
-                                    roadWidth / 2,
+                                    4.5,
                                     RhinoDoc.ActiveDoc.ModelAbsoluteTolerance,
                                     CurveOffsetCornerStyle.Sharp);
 
