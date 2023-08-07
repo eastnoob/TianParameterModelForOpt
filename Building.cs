@@ -297,7 +297,7 @@ namespace TianParameterModelForOpt
                 }
 
                 // 如果是end-boundage线，那么直接不生成
-                else if (offsetBehavioursOfLandcurves[pair.Key] == "end-boundage")
+                else if (offsetBehavioursOfLandcurves[pair.Key] == "endfuiy")
                 {
                     //curveWithBrep[pair.Key] = null;
                     // 尝试向外反方向生成
